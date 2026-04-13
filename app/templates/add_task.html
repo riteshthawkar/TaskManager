@@ -5,7 +5,11 @@
     display: flex;
     gap: 4px;
     margin-bottom: 24px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
 }
+.steps::-webkit-scrollbar { display: none; }
 .step {
     display: flex;
     align-items: center;
@@ -17,11 +21,18 @@
     color: var(--text-tertiary);
     background: rgba(255,255,255,0.03);
     border: 1px solid transparent;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 .step.on {
     color: var(--accent);
     background: rgba(10,132,255,0.08);
     border-color: rgba(10,132,255,0.15);
+}
+.step.done {
+    color: var(--green);
+    background: rgba(48,209,88,0.08);
+    border-color: rgba(48,209,88,0.15);
 }
 .step-n {
     width: 18px; height: 18px;
@@ -32,6 +43,7 @@
     background: rgba(255,255,255,0.06);
 }
 .step.on .step-n { background: var(--accent); color: #fff; }
+.step.done .step-n { background: var(--green); color: #fff; }
 
 .analysis {
     background: var(--surface);
@@ -39,8 +51,8 @@
     -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 20px;
-    margin-bottom: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
 }
 .q-item {
     background: rgba(255,255,255,0.03);
@@ -52,6 +64,25 @@
     color: var(--text-secondary);
     line-height: 1.5;
 }
+.q-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-bottom: 6px;
+}
+.q-answer {
+    width: 100%;
+    padding: 8px 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    margin-top: 8px;
+}
+.q-answer:focus { outline: none; border-color: var(--accent); }
+.q-answer::placeholder { color: var(--text-tertiary); }
 .reasoning {
     border-left: 2px solid var(--orange);
     padding: 10px 14px;
@@ -70,29 +101,69 @@
     -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 16px 20px;
-    margin-bottom: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
 }
 .preview-title { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
 .preview-desc { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
 
+.est-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(48,209,88,0.08);
+    color: var(--green);
+    border: 1px solid rgba(48,209,88,0.12);
+    margin-top: 10px;
+}
+
 .two-col {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 16px;
+}
+.three-col {
+    display: grid;
+    grid-template-columns: 1fr;
     gap: 12px;
     margin-top: 16px;
 }
 .form-btns {
     display: flex;
+    flex-direction: column;
     gap: 8px;
     margin-top: 20px;
 }
 .form-btns .btn { flex: 1; justify-content: center; }
 
-@media (max-width: 600px) {
-    .two-col { grid-template-columns: 1fr; }
-    .form-btns { flex-direction: column; }
-    .steps { flex-wrap: wrap; }
+.skip-link {
+    display: block;
+    text-align: center;
+    margin-top: 12px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    text-decoration: none;
+}
+.skip-link:hover { color: var(--text-secondary); }
+
+@media (min-width: 720px) {
+    .analysis,
+    .preview-bar {
+        padding: 20px;
+        margin-bottom: 12px;
+    }
+    .two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .three-col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .form-btns { flex-direction: row; }
+    .steps {
+        overflow: visible;
+        padding-bottom: 0;
+    }
 }
 {% endblock %}
 
@@ -103,14 +174,17 @@
 </div>
 
 <div class="steps fade-in d1">
-    <div class="step {% if step == 'input' %}on{% endif %}">
+    <div class="step {% if step == 'input' %}on{% elif step in ['review', 'confirm'] %}done{% endif %}">
         <span class="step-n">1</span> Describe
     </div>
-    <div class="step {% if step == 'review' %}on{% endif %}">
+    <div class="step {% if step == 'review' %}on{% elif step == 'confirm' %}done{% endif %}">
         <span class="step-n">2</span> AI Review
     </div>
+    <div class="step {% if step == 'confirm' %}on{% endif %}">
+        <span class="step-n">3</span> Clarify
+    </div>
     <div class="step">
-        <span class="step-n">3</span> Confirm
+        <span class="step-n">4</span> Confirm
     </div>
 </div>
 
@@ -126,6 +200,10 @@
             <label for="description">Description (optional)</label>
             <textarea id="description" name="description" placeholder="More context helps the AI give better suggestions..."></textarea>
         </div>
+        <div class="form-group">
+            <label for="user_deadline">Your deadline (optional — AI will suggest one if blank)</label>
+            <input type="date" id="user_deadline" name="user_deadline">
+        </div>
         <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Analyze with AI</button>
     </form>
 </div>
@@ -134,26 +212,72 @@
 <div class="preview-bar fade-in d1">
     <div class="preview-title">{{ title }}</div>
     {% if description %}<div class="preview-desc">{{ description }}</div>{% endif %}
+    {% if user_deadline %}<div class="preview-desc" style="margin-top: 4px;">Your deadline: {{ user_deadline }}</div>{% endif %}
 </div>
 
 <div class="analysis fade-in d2">
     <h2>AI Coach</h2>
-    <p class="muted mb-md">Consider these while reviewing the suggestions:</p>
-    {% for q in analysis.questions %}
-    <div class="q-item">{{ q }}</div>
-    {% endfor %}
-    <div class="reasoning">
-        <strong>Reasoning:</strong> {{ analysis.reasoning }}
-    </div>
+    <p class="muted mb-md">Answer these to help refine the AI's suggestions:</p>
+    <form method="post" action="/tasks/followup">
+        <input type="hidden" name="title" value="{{ title }}">
+        <input type="hidden" name="description" value="{{ description }}">
+        <input type="hidden" name="user_deadline" value="{{ user_deadline or '' }}">
+
+        {% for q in analysis.questions %}
+        <div class="q-item">
+            <div class="q-label">Question {{ loop.index }}</div>
+            <div>{{ q }}</div>
+            <input type="hidden" name="question_{{ loop.index0 }}" value="{{ q }}">
+            <input type="text" class="q-answer" name="answer_{{ loop.index0 }}" placeholder="Your answer...">
+        </div>
+        {% endfor %}
+
+        <div class="reasoning">
+            <strong>Initial assessment:</strong> {{ analysis.reasoning }}
+        </div>
+
+        {% if analysis.estimated_completion_date and analysis.estimated_completion_date != analysis.suggested_deadline %}
+        <div class="est-badge">
+            AI estimates completion by {{ analysis.estimated_completion_date }}
+            {% if user_deadline and analysis.estimated_completion_date > user_deadline %}
+                — this may be tight for your deadline
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="form-btns">
+            <button type="submit" class="btn btn-primary btn-lg">Refine with Answers</button>
+            <a href="/tasks/add" class="btn btn-outline btn-lg">Start Over</a>
+        </div>
+    </form>
+
+    <!-- Skip clarifications and go straight to confirm -->
+    <form method="post" action="/tasks/confirm" style="margin-top: 0;">
+        <input type="hidden" name="title" value="{{ title }}">
+        <input type="hidden" name="description" value="{{ description }}">
+        <input type="hidden" name="priority" value="{{ analysis.suggested_priority }}">
+        <input type="hidden" name="deadline" value="{{ analysis.suggested_deadline }}">
+        <input type="hidden" name="estimated_completion" value="{{ analysis.estimated_completion_date or '' }}">
+        <button type="submit" class="skip-link" style="background:none; border:none; cursor:pointer; font-family:inherit; width:100%;">
+            Skip questions — use AI suggestions as-is
+        </button>
+    </form>
 </div>
 
-<div class="card fade-in d3">
+{% elif step == 'confirm' %}
+<div class="preview-bar fade-in d1">
+    <div class="preview-title">{{ title }}</div>
+    {% if description %}<div class="preview-desc">{{ description }}</div>{% endif %}
+    {% if user_deadline %}<div class="preview-desc" style="margin-top: 4px;">Your deadline: {{ user_deadline }}</div>{% endif %}
+</div>
+
+<div class="card fade-in d2">
     <h2>Confirm or Adjust</h2>
-    <p class="muted">AI-suggested values below. Change if needed.</p>
+    <p class="muted">Refined AI suggestions below. Change if needed.</p>
     <form method="post" action="/tasks/confirm">
         <input type="hidden" name="title" value="{{ title }}">
         <input type="hidden" name="description" value="{{ description }}">
-        <div class="two-col">
+        <div class="three-col">
             <div class="form-group">
                 <label for="priority">Priority</label>
                 <select id="priority" name="priority">
@@ -168,7 +292,16 @@
                 <label for="deadline">Deadline</label>
                 <input type="date" id="deadline" name="deadline" value="{{ analysis.suggested_deadline }}">
             </div>
+            <div class="form-group">
+                <label for="estimated_completion">Est. Completion</label>
+                <input type="date" id="estimated_completion" name="estimated_completion" value="{{ analysis.estimated_completion_date or '' }}">
+            </div>
         </div>
+
+        <div class="reasoning">
+            <strong>Reasoning:</strong> {{ analysis.reasoning }}
+        </div>
+
         <div class="form-btns">
             <button type="submit" class="btn btn-primary btn-lg">Add Task</button>
             <a href="/tasks/add" class="btn btn-outline btn-lg">Start Over</a>

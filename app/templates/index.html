@@ -3,9 +3,87 @@
 {% block extra_style %}
 .stats-row {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
+}
+.dashboard-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.dashboard-panels {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 14px;
+}
+.dashboard-side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.today-plan {
+    background: linear-gradient(180deg, rgba(10,132,255,0.10), rgba(28,28,30,0.72));
+}
+.plan-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+.plan-metric {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+}
+.plan-metric-value {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+}
+.plan-metric-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+.plan-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.plan-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+}
+.plan-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.plan-task-name {
+    font-size: 13px;
+    font-weight: 600;
+}
+.plan-task-meta {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 3px;
+}
+.slot-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
 }
 .stat {
     background: var(--surface);
@@ -38,10 +116,10 @@
     -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 16px 20px;
-    margin-bottom: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
     font-size: 13px;
     color: var(--text-secondary);
@@ -61,11 +139,12 @@
     -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 16px 20px;
-    margin-bottom: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
     display: flex;
-    align-items: center;
-    gap: 14px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
 }
 .dw-bar-icon {
     width: 36px; height: 36px;
@@ -92,6 +171,8 @@
     font-family: inherit;
     white-space: nowrap;
     transition: all 0.2s;
+    width: 100%;
+    justify-content: center;
 }
 .btn-dw:hover { background: rgba(48,209,88,0.20); }
 
@@ -101,11 +182,12 @@
     -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid rgba(48,209,88,0.12);
     border-radius: var(--radius);
-    padding: 14px 20px;
-    margin-bottom: 12px;
+    padding: 16px;
+    margin-bottom: 14px;
     display: flex;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
     font-size: 13px;
     font-weight: 600;
 }
@@ -124,7 +206,9 @@
 
 .task-item {
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
     padding: 14px 0;
     border-bottom: 1px solid var(--border);
 }
@@ -135,6 +219,7 @@
     font-weight: 500;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 8px;
 }
 .task-detail {
@@ -142,147 +227,275 @@
     color: var(--text-tertiary);
     margin-top: 3px;
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
 }
-.task-btns { display: flex; gap: 6px; flex-shrink: 0; margin-left: 12px; }
+.task-btns {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+}
+.task-btns form { width: 100%; }
+.task-btns .btn { width: 100%; }
+.task-note {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 6px;
+}
 .warn { color: var(--orange); }
 .urgent { color: var(--red); }
 .done-row { opacity: 0.35; }
 .empty { text-align: center; padding: 36px 0; color: var(--text-tertiary); font-size: 13px; }
 
-@media (max-width: 600px) {
-    .stats-row { grid-template-columns: repeat(2, 1fr); }
-    .task-item { flex-wrap: wrap; gap: 10px; }
-    .task-btns { margin-left: 0; width: 100%; }
-    .dw-bar { flex-wrap: wrap; gap: 10px; }
-    .dw-bar .btn-dw { width: 100%; text-align: center; }
+@media (min-width: 720px) {
+    .stats-row {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-bottom: 12px;
+    }
+    .motivation,
+    .dw-bar,
+    .active-dw {
+        padding: 16px 20px;
+        margin-bottom: 12px;
+    }
+    .dw-bar {
+        flex-direction: row;
+        align-items: center;
+        gap: 14px;
+    }
+    .btn-dw {
+        width: auto;
+        justify-content: center;
+    }
+    .active-dw {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+    }
+    .task-item {
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+    }
+    .task-btns {
+        display: flex;
+        gap: 6px;
+        width: auto;
+        flex-shrink: 0;
+    }
+    .task-btns form,
+    .task-btns .btn {
+        width: auto;
+    }
+    .plan-metrics {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1040px) {
+    .dashboard-shell {
+        gap: 16px;
+    }
+    .dashboard-panels {
+        grid-template-columns: minmax(0, 1.7fr) minmax(280px, 0.95fr);
+        align-items: start;
+        gap: 16px;
+    }
+    .dashboard-side {
+        position: sticky;
+        top: 92px;
+    }
 }
 {% endblock %}
 
 {% block content %}
-<div class="motivation fade-in">
-    <div class="motivation-dot"></div>
-    <div>{{ motivation }}</div>
-</div>
+<div class="dashboard-shell">
+    <div class="motivation fade-in">
+        <div class="motivation-dot"></div>
+        <div>{{ motivation }}</div>
+    </div>
 
-<div class="stats-row">
-    <div class="stat fade-in d1">
-        <div class="stat-val" style="color: var(--orange);">{{ stats.current_streak }}</div>
-        <div class="stat-lbl">Day Streak</div>
-        {% if streak_multiplier > 1.0 %}
-        <div class="stat-sub" style="color: var(--accent);">{{ streak_multiplier }}x XP</div>
-        {% endif %}
-    </div>
-    <div class="stat fade-in d2">
-        <div class="stat-val" style="color: var(--purple);">Lv.{{ level }}</div>
-        <div class="stat-lbl">{{ stats.total_xp }} XP</div>
-        <div class="xp-track"><div class="xp-bar" style="width: {{ xp_in_level }}%"></div></div>
-    </div>
-    <div class="stat fade-in d3">
-        <div class="stat-val" style="color: var(--green);">{{ stats.tasks_completed }}</div>
-        <div class="stat-lbl">Completed</div>
-    </div>
-    <div class="stat fade-in d4">
-        <div class="stat-val">{{ tasks | length }}</div>
-        <div class="stat-lbl">Active</div>
-    </div>
-</div>
-
-{% if active_session %}
-<div class="active-dw fade-in d3">
-    <div><span class="live-dot"></span>Deep Work in progress</div>
-    <a href="/deepwork" class="btn-dw">View</a>
-</div>
-{% elif dw_suggestion and dw_suggestion.recommended_task_id %}
-<div class="dw-bar fade-in d3">
-    <div class="dw-bar-icon">&#9201;</div>
-    <div class="dw-bar-text">
-        <div class="dw-bar-title">{{ dw_suggestion.suggested_duration }}m deep work &mdash; {{ dw_suggestion.recommended_task_title }}</div>
-        <div class="dw-bar-desc">{{ dw_suggestion.reasoning }}</div>
-        <div class="dw-bar-tip">{{ dw_suggestion.tip }}</div>
-    </div>
-    <a href="/deepwork" class="btn-dw">Start</a>
-</div>
-{% else %}
-<div class="dw-bar fade-in d3">
-    <div class="dw-bar-icon">&#9201;</div>
-    <div class="dw-bar-text">
-        <div class="dw-bar-title">Deep Work Sessions</div>
-        <div class="dw-bar-desc">Block focused time. Earn bonus XP.</div>
-    </div>
-    <a href="/deepwork" class="btn-dw">Open</a>
-</div>
-{% endif %}
-
-<div class="card fade-in d4">
-    <div class="flex-between mb-md">
-        <h2 style="margin-bottom:0;">Active Tasks</h2>
-        <a href="/tasks/add" class="btn btn-primary btn-sm">+ New Task</a>
-    </div>
-    {% if tasks %}
-        {% for task in tasks %}
-        <div class="task-item">
-            <div class="task-body">
-                <div class="task-name">
-                    <span class="badge p{{ task.priority }}">P{{ task.priority }}</span>
-                    <span>{{ task.title }}</span>
-                    <span class="badge" style="background:rgba(255,255,255,0.04); color:var(--text-tertiary); font-size:10px;">{{ task.status.replace('_', ' ') }}</span>
-                </div>
-                <div class="task-detail">
-                    {% if task.deadline %}
-                        {% set hours_left = ((task.deadline - now).total_seconds() / 3600) | int %}
-                        {% if hours_left < 0 %}
-                            <span class="urgent">Overdue {{ (-hours_left) }}h</span>
-                        {% elif hours_left < 24 %}
-                            <span class="warn">Due in {{ hours_left }}h</span>
-                        {% else %}
-                            <span>{{ task.deadline.strftime('%b %d, %Y') }}</span>
-                        {% endif %}
-                    {% else %}
-                        <span>No deadline</span>
-                    {% endif %}
-                    {% if task.description %}
-                        <span>{{ task.description[:40] }}{% if task.description|length > 40 %}...{% endif %}</span>
-                    {% endif %}
-                </div>
-            </div>
-            <div class="task-btns">
-                {% if task.status == 'pending' %}
-                <form method="post" action="/tasks/{{ task.id }}/start" style="display:inline;">
-                    <button type="submit" class="btn btn-outline btn-sm">Start</button>
-                </form>
-                {% endif %}
-                <form method="post" action="/tasks/{{ task.id }}/complete" style="display:inline;">
-                    <button type="submit" class="btn btn-success btn-sm">Done</button>
-                </form>
-                <form method="post" action="/tasks/{{ task.id }}/delete" style="display:inline;">
-                    <button type="submit" class="btn btn-danger btn-sm">Del</button>
-                </form>
-            </div>
+    <div class="stats-row">
+        <div class="stat fade-in d1">
+            <div class="stat-val" style="color: var(--orange);">{{ stats.current_streak }}</div>
+            <div class="stat-lbl">Day Streak</div>
+            {% if streak_multiplier > 1.0 %}
+            <div class="stat-sub" style="color: var(--accent);">{{ streak_multiplier }}x XP</div>
+            {% endif %}
         </div>
-        {% endfor %}
+        <div class="stat fade-in d2">
+            <div class="stat-val" style="color: var(--purple);">Lv.{{ level }}</div>
+            <div class="stat-lbl">{{ stats.total_xp }} XP</div>
+            <div class="xp-track"><div class="xp-bar" style="width: {{ xp_in_level }}%"></div></div>
+        </div>
+        <div class="stat fade-in d3">
+            <div class="stat-val" style="color: var(--green);">{{ stats.tasks_completed }}</div>
+            <div class="stat-lbl">Completed</div>
+        </div>
+        <div class="stat fade-in d4">
+            <div class="stat-val">{{ tasks | length }}</div>
+            <div class="stat-lbl">Active</div>
+        </div>
+    </div>
+
+    {% if active_session %}
+    <div class="active-dw fade-in d3">
+        <div><span class="live-dot"></span>Deep Work in progress</div>
+        <a href="/deepwork" class="btn-dw">View</a>
+    </div>
+    {% elif dw_suggestion and dw_suggestion.recommended_task_id %}
+    <div class="dw-bar fade-in d3">
+        <div class="dw-bar-icon">&#9201;</div>
+        <div class="dw-bar-text">
+            <div class="dw-bar-title">{{ dw_suggestion.suggested_duration }}m deep work &mdash; {{ dw_suggestion.recommended_task_title }}</div>
+            <div class="dw-bar-desc">{{ dw_suggestion.reasoning }}</div>
+            <div class="dw-bar-tip">{{ dw_suggestion.tip }}</div>
+        </div>
+        <a href="/deepwork" class="btn-dw">Start</a>
+    </div>
     {% else %}
-        <div class="empty">No active tasks. Add one to get started.</div>
+    <div class="dw-bar fade-in d3">
+        <div class="dw-bar-icon">&#9201;</div>
+        <div class="dw-bar-text">
+            <div class="dw-bar-title">Deep Work Sessions</div>
+            <div class="dw-bar-desc">Block focused time. Earn bonus XP.</div>
+        </div>
+        <a href="/deepwork" class="btn-dw">Open</a>
+    </div>
     {% endif %}
-</div>
 
-{% if completed_tasks %}
-<div class="card fade-in d4">
-    <h2>Recently Completed</h2>
-    {% for task in completed_tasks %}
-    <div class="task-item done-row">
-        <div class="task-body">
-            <div class="task-name">
-                <span class="badge p{{ task.priority }}">P{{ task.priority }}</span>
-                <span style="text-decoration: line-through;">{{ task.title }}</span>
-            </div>
-            <div class="task-detail">
-                <span>{{ task.completed_at.strftime('%b %d') }}</span>
-                <span style="color: var(--accent);">+{{ task.xp_earned }} XP</span>
+    <div class="dashboard-panels">
+        <div class="dashboard-main">
+            <div class="card fade-in d4">
+                <div class="flex-between mb-md">
+                    <h2 style="margin-bottom:0;">Active Tasks</h2>
+                    <a href="/tasks/add" class="btn btn-primary btn-sm">+ New Task</a>
+                </div>
+                {% if tasks %}
+                    {% for task in tasks %}
+                    <div class="task-item">
+                        <div class="task-body">
+                            <div class="task-name">
+                                <span class="badge p{{ task.priority }}">P{{ task.priority }}</span>
+                                <span>{{ task.title }}</span>
+                                <span class="badge" style="background:rgba(255,255,255,0.04); color:var(--text-tertiary); font-size:10px;">{{ task.status.replace('_', ' ') }}</span>
+                            </div>
+                            <div class="task-detail">
+                                {% if task.deadline %}
+                                    {% set hours_left = ((task.deadline - now).total_seconds() / 3600) | int %}
+                                    {% if hours_left < 0 %}
+                                        <span class="urgent">Overdue {{ (-hours_left) }}h</span>
+                                    {% elif hours_left < 24 %}
+                                        <span class="warn">Due in {{ hours_left }}h</span>
+                                    {% else %}
+                                        <span>{{ task.deadline.strftime('%b %d, %Y') }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span>No deadline</span>
+                                {% endif %}
+                                {% if task.description %}
+                                    <span>{{ task.description[:40] }}{% if task.description|length > 40 %}...{% endif %}</span>
+                                {% endif %}
+                                {% if task.estimated_completion %}
+                                    <span>Est. {{ task.estimated_completion.strftime('%b %d') }}</span>
+                                {% endif %}
+                            </div>
+                            {% if task_focus_counts.get(task.id) %}
+                            <div class="task-note">{{ task_focus_counts.get(task.id) }} focus block{% if task_focus_counts.get(task.id) != 1 %}s{% endif %} already reserved</div>
+                            {% endif %}
+                        </div>
+                        <div class="task-btns">
+                            {% if task.status == 'pending' %}
+                            <form method="post" action="/tasks/{{ task.id }}/start" style="display:inline;">
+                                <button type="submit" class="btn btn-outline btn-sm">Start</button>
+                            </form>
+                            {% endif %}
+                            <form method="post" action="/tasks/{{ task.id }}/plan-focus" style="display:inline;">
+                                <button type="submit" class="btn btn-outline btn-sm">Plan {{ focus_duration_for_task(task) }}m</button>
+                            </form>
+                            <form method="post" action="/tasks/{{ task.id }}/complete" style="display:inline;">
+                                <button type="submit" class="btn btn-success btn-sm">Done</button>
+                            </form>
+                            <form method="post" action="/tasks/{{ task.id }}/delete" style="display:inline;">
+                                <button type="submit" class="btn btn-danger btn-sm">Del</button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty">No active tasks. Add one to get started.</div>
+                {% endif %}
             </div>
         </div>
+
+        <div class="dashboard-side">
+            <div class="card today-plan fade-in d3">
+                <div class="flex-between mb-md">
+                    <h2 style="margin-bottom:0;">Today Plan</h2>
+                    <a href="/schedule" class="btn btn-outline btn-sm">Open Schedule</a>
+                </div>
+                <div class="plan-metrics">
+                    <div class="plan-metric">
+                        <div class="plan-metric-value">{{ urgent_tasks | length }}</div>
+                        <div class="plan-metric-label">Top Priorities</div>
+                    </div>
+                    <div class="plan-metric">
+                        <div class="plan-metric-value">{{ today_events_count }}</div>
+                        <div class="plan-metric-label">Events Today</div>
+                    </div>
+                    <div class="plan-metric">
+                        <div class="plan-metric-value">{{ today_focus_blocks }}</div>
+                        <div class="plan-metric-label">Focus Blocks</div>
+                    </div>
+                </div>
+                {% if next_focus_slot_label %}
+                <div class="slot-chip">Next free focus slot: {{ next_focus_slot_label }}</div>
+                {% endif %}
+                {% if urgent_tasks %}
+                <div class="plan-list">
+                    {% for task in urgent_tasks %}
+                    <div class="plan-item">
+                        <div>
+                            <div class="plan-task-name">{{ task.title }}</div>
+                            <div class="plan-task-meta">
+                                P{{ task.priority }}
+                                {% if task.deadline %} · due {{ task.deadline.strftime('%b %d') }}{% endif %}
+                                {% if task.estimated_completion %} · est. {{ task.estimated_completion.strftime('%b %d') }}{% endif %}
+                            </div>
+                        </div>
+                        <form method="post" action="/tasks/{{ task.id }}/plan-focus">
+                            <button type="submit" class="btn btn-outline btn-sm">Plan</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty" style="padding: 12px 0 0;">No active tasks. Start by adding one.</div>
+                {% endif %}
+            </div>
+
+        {% if completed_tasks %}
+            <div class="card fade-in d4">
+                <h2>Recently Completed</h2>
+                {% for task in completed_tasks %}
+                <div class="task-item done-row">
+                    <div class="task-body">
+                        <div class="task-name">
+                            <span class="badge p{{ task.priority }}">P{{ task.priority }}</span>
+                            <span style="text-decoration: line-through;">{{ task.title }}</span>
+                        </div>
+                        <div class="task-detail">
+                            <span>{{ task.completed_at.strftime('%b %d') }}</span>
+                            <span style="color: var(--accent);">+{{ task.xp_earned }} XP</span>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        </div>
     </div>
-    {% endfor %}
 </div>
-{% endif %}
 {% endblock %}

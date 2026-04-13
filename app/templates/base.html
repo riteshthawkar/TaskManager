@@ -47,11 +47,12 @@
             background: var(--bg);
             color: var(--text);
             line-height: 1.5;
+            min-height: 100vh;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
 
-        .container { max-width: 800px; margin: 0 auto; padding: 0 20px; }
+        .container { max-width: 880px; margin: 0 auto; padding: 0 14px; }
 
         /* ── Nav ────────────────────────── */
         nav {
@@ -59,28 +60,42 @@
             backdrop-filter: blur(40px) saturate(180%);
             -webkit-backdrop-filter: blur(40px) saturate(180%);
             border-bottom: 1px solid var(--border);
-            padding: 14px 0;
+            padding: 10px 0 12px;
             position: sticky;
             top: 0;
             z-index: 100;
         }
-        nav .container { display: flex; justify-content: space-between; align-items: center; }
+        nav .container {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 12px;
+        }
         nav .brand {
-            font-size: 17px;
+            font-size: 15px;
             font-weight: 700;
             color: var(--text);
             text-decoration: none;
             letter-spacing: -0.3px;
+            text-align: center;
         }
-        nav .nav-links { display: flex; gap: 2px; }
+        nav .nav-links {
+            display: none;
+        }
         nav .nav-links a {
             color: var(--text-secondary);
             text-decoration: none;
-            font-size: 13px;
+            font-size: 11px;
             font-weight: 500;
-            padding: 7px 14px;
+            padding: 9px 0;
             border-radius: var(--radius-xs);
             transition: all 0.2s;
+            text-align: center;
+            white-space: nowrap;
+        }
+        nav .nav-links a.active {
+            color: var(--text);
+            background: rgba(255,255,255,0.06);
         }
         nav .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.06); }
         nav .nav-links a.nav-cta {
@@ -90,7 +105,7 @@
         }
         nav .nav-links a.nav-cta:hover { background: #409cff; }
 
-        .page-content { padding: 32px 0 80px; }
+        .page-content { padding: 20px 0 98px; }
 
         /* ── Glass Card ────────────────── */
         .card {
@@ -99,8 +114,8 @@
             -webkit-backdrop-filter: blur(40px) saturate(150%);
             border: 1px solid var(--border);
             border-radius: var(--radius);
-            padding: 20px;
-            margin-bottom: 12px;
+            padding: 16px;
+            margin-bottom: 14px;
         }
 
         /* ── Buttons ───────────────────── */
@@ -118,6 +133,7 @@
             font-family: inherit;
             text-decoration: none;
             transition: all 0.2s;
+            min-height: 40px;
         }
         .btn-primary { background: var(--accent); color: #fff; }
         .btn-primary:hover { background: #409cff; }
@@ -127,8 +143,8 @@
         .btn-danger:hover { background: rgba(255,69,58,0.20); }
         .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
         .btn-outline:hover { background: rgba(255,255,255,0.05); color: var(--text); border-color: var(--border-hover); }
-        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; }
-        .btn-lg { padding: 12px 24px; font-size: 14px; }
+        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; min-height: 34px; }
+        .btn-lg { padding: 12px 18px; font-size: 13px; min-height: 46px; }
 
         /* ── Forms ──────────────────────── */
         input, textarea, select {
@@ -138,7 +154,7 @@
             border: 1px solid var(--border);
             border-radius: var(--radius-xs);
             color: var(--text);
-            font-size: 14px;
+            font-size: 16px;
             font-family: inherit;
             transition: all 0.2s;
         }
@@ -148,7 +164,7 @@
             background: rgba(255,255,255,0.07);
         }
         input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
-        textarea { resize: vertical; min-height: 80px; }
+        textarea { resize: vertical; min-height: 96px; }
         select { cursor: pointer; }
         select option { background: var(--surface-solid); color: var(--text); }
         label { display: block; font-weight: 500; margin-bottom: 6px; font-size: 13px; color: var(--text-secondary); }
@@ -174,15 +190,106 @@
         .status-completed { color: var(--green); }
 
         /* ── Typography ────────────────── */
-        h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
-        h2 { font-size: 17px; font-weight: 600; margin-bottom: 12px; letter-spacing: -0.2px; }
+        h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+        h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; letter-spacing: -0.2px; }
         .muted { color: var(--text-secondary); font-size: 13px; }
 
         /* ── Utilities ─────────────────── */
-        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        .flex-between {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
         .mb-sm { margin-bottom: 8px; }
         .mb-md { margin-bottom: 16px; }
         .mt-xs { margin-top: 4px; }
+
+        .alerts {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .alert {
+            border-radius: var(--radius-sm);
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            background: var(--surface-raised);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+        .alert-success {
+            border-color: rgba(48,209,88,0.22);
+            color: var(--green);
+        }
+        .alert-error {
+            border-color: rgba(255,69,58,0.22);
+            color: var(--red);
+        }
+        .alert-info {
+            border-color: rgba(10,132,255,0.22);
+            color: var(--accent);
+        }
+
+        .mobile-tabbar {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 110;
+            padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+            background: rgba(0,0,0,0.82);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border-top: 1px solid var(--border);
+        }
+        .mobile-tabbar-inner {
+            max-width: 880px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 8px;
+        }
+        .mobile-tabbar a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            text-align: center;
+            padding: 10px 6px;
+            font-size: 11px;
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+        .mobile-tabbar a.active {
+            color: var(--text);
+            background: rgba(255,255,255,0.07);
+        }
+        .mobile-tabbar a.mobile-cta {
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        /* ── Button Loader ─────────────── */
+        .btn.loading, button.loading {
+            pointer-events: none;
+            opacity: 0.7;
+            position: relative;
+        }
+        .btn.loading .btn-text, button.loading .btn-text { visibility: hidden; }
+        .btn.loading::after, button.loading::after {
+            content: '';
+            position: absolute;
+            width: 16px; height: 16px;
+            top: 50%; left: 50%;
+            margin: -8px 0 0 -8px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         /* ── Animations ────────────────── */
         @keyframes fadeIn {
@@ -201,20 +308,44 @@
             .page-content { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
         }
 
-        /* ── Mobile ─────────────────────── */
-        @media (max-width: 600px) {
-            .container { padding: 0 14px; }
-            .page-content { padding: 20px 0 60px; }
-            nav { padding: 10px 0; }
-            nav .container { gap: 8px; }
-            nav .nav-links { gap: 0; }
-            nav .nav-links a { padding: 6px 8px; font-size: 11px; }
-            nav .nav-links a.nav-cta { padding: 6px 10px; }
-            nav .brand { font-size: 15px; }
-            h1 { font-size: 22px; }
-            h2 { font-size: 16px; }
-            .btn-lg { padding: 11px 18px; font-size: 13px; }
-            .flex-between { flex-wrap: wrap; gap: 10px; }
+        @media (min-width: 720px) {
+            .container { padding: 0 20px; }
+            nav { padding: 14px 0; }
+            nav .container {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+                gap: 16px;
+            }
+            nav .brand {
+                font-size: 17px;
+                text-align: left;
+            }
+            nav .nav-links {
+                display: flex;
+                gap: 2px;
+            }
+            nav .nav-links a {
+                font-size: 13px;
+                padding: 7px 14px;
+            }
+            .page-content { padding: 32px 0 80px; }
+            .card {
+                padding: 20px;
+                margin-bottom: 12px;
+            }
+            .alerts { margin-bottom: 16px; }
+            .btn-lg { padding: 12px 24px; font-size: 14px; }
+            input, textarea, select { font-size: 14px; }
+            textarea { min-height: 80px; }
+            h1 { font-size: 28px; }
+            h2 { font-size: 17px; }
+            .flex-between {
+                align-items: center;
+                flex-wrap: nowrap;
+                gap: 16px;
+            }
+            .mobile-tabbar { display: none; }
         }
 
         {% block extra_style %}{% endblock %}
@@ -225,16 +356,31 @@
         <div class="container">
             <a href="/" class="brand">TaskManager</a>
             <div class="nav-links">
-                <a href="/">Home</a>
-                <a href="/schedule">Schedule</a>
-                <a href="/deepwork">Focus</a>
-                <a href="/tasks/add" class="nav-cta">+ New</a>
+                <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Home</a>
+                <a href="/schedule" class="{% if request.url.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
+                <a href="/deepwork" class="{% if request.url.path.startswith('/deepwork') %}active{% endif %}">Focus</a>
+                <a href="/tasks/add" class="nav-cta {% if request.url.path.startswith('/tasks/add') %}active{% endif %}">+ New</a>
             </div>
         </div>
     </nav>
     <div class="container">
         <div class="page-content">
+            {% if alerts %}
+            <div class="alerts">
+                {% for alert in alerts %}
+                <div class="alert alert-{{ alert.kind }}">{{ alert.message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
             {% block content %}{% endblock %}
+        </div>
+    </div>
+    <div class="mobile-tabbar">
+        <div class="mobile-tabbar-inner">
+            <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Home</a>
+            <a href="/schedule" class="{% if request.url.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
+            <a href="/deepwork" class="{% if request.url.path.startswith('/deepwork') %}active{% endif %}">Focus</a>
+            <a href="/tasks/add" class="mobile-cta {% if request.url.path.startswith('/tasks/add') %}active{% endif %}">+ New</a>
         </div>
     </div>
     <script>
@@ -243,6 +389,27 @@
                 .then(() => console.log('SW registered'))
                 .catch((e) => console.log('SW failed:', e));
         }
+        // Global: add loading spinner to submit buttons on form submit
+        document.addEventListener('submit', function(e) {
+            var form = e.target;
+            if (form.dataset.submitting === 'true') {
+                e.preventDefault();
+                return;
+            }
+
+            var btn = e.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
+            form.dataset.submitting = 'true';
+
+            if (btn && !btn.classList.contains('loading')) {
+                if (btn.tagName === 'BUTTON') {
+                    var text = btn.innerHTML;
+                    btn.innerHTML = '<span class="btn-text">' + text + '</span>';
+                }
+                btn.classList.add('loading');
+                // Prevent double submit
+                setTimeout(function(){ btn.disabled = true; }, 10);
+            }
+        });
     </script>
 </body>
 </html>

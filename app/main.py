@@ -1,19 +1,20 @@
 from __future__ import annotations
 import os
 from pathlib import Path
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, Depends, Form
+from fastapi import FastAPI, HTTPException, Request, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.background import BackgroundScheduler
+from starlette.middleware.sessions import SessionMiddleware
 
-from app.database import engine, get_db, Base
+from app.database import get_db, ensure_schema_compatibility
 from app.models import Task, UserStats, DeepWorkSession, Event
-from app.llm import analyze_task, generate_motivation, suggest_deep_work
+from app.llm import analyze_task, followup_analyze, generate_motivation, suggest_deep_work
 from app.notifications import check_and_send_notifications
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -27,8 +28,10 @@ scheduler.add_job(check_and_send_notifications, "interval", minutes=30, id="noti
 async def lifespan(app: FastAPI):
     # Create tables on startup
     try:
-        Base.metadata.create_all(bind=engine)
-        print("[STARTUP] Tables created successfully")
+        applied_migrations = ensure_schema_compatibility()
+        print("[STARTUP] Tables ready")
+        if applied_migrations:
+            print(f"[STARTUP] Applied schema updates: {', '.join(applied_migrations)}")
     except Exception as e:
         print(f"[STARTUP ERROR] Failed to create tables: {e}")
 
@@ -60,6 +63,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="TaskManager", lifespan=lifespan)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.getenv("SESSION_SECRET", "taskmanager-dev-session-secret"),
+    same_site="lax",
+)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
@@ -69,10 +77,19 @@ async def health():
     return {"status": "ok"}
 
 
+@app.head("/")
+async def dashboard_head():
+    return HTMLResponse(status_code=200, content="")
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 PRIORITY_LABELS = {1: "Low", 2: "Medium-Low", 3: "Medium", 4: "High", 5: "Critical"}
 XP_BY_PRIORITY = {1: 10, 2: 20, 3: 30, 4: 40, 5: 50}
+WORKDAY_START = time(8, 0)
+WORKDAY_END = time(20, 0)
+FOCUS_EVENT_PREFIX = "Focus:"
+FOCUS_EVENT_MARKER = "[focus-task:"
 
 
 def get_stats(db: Session) -> UserStats:
@@ -83,6 +100,172 @@ def get_stats(db: Session) -> UserStats:
         db.commit()
         db.refresh(stats)
     return stats
+
+
+def parse_date_input(value: str) -> datetime | None:
+    """Treat date inputs as end-of-day deadlines."""
+    if not value:
+        return None
+    parsed = datetime.strptime(value, "%Y-%m-%d").date()
+    return datetime.combine(parsed, time(23, 59, 59))
+
+
+def template_context(request: Request, **context) -> dict:
+    base = {"request": request, "alerts": request.session.pop("alerts", [])}
+    base.update(context)
+    return base
+
+
+def push_alert(request: Request, kind: str, message: str) -> None:
+    alerts = list(request.session.get("alerts", []))
+    alerts.append({"kind": kind, "message": message})
+    request.session["alerts"] = alerts[-4:]
+
+
+def parse_clock(value: str) -> time:
+    return datetime.strptime(value, "%H:%M").time()
+
+
+def time_to_minutes(value: time | str) -> int:
+    parsed = parse_clock(value) if isinstance(value, str) else value
+    return parsed.hour * 60 + parsed.minute
+
+
+def minutes_to_time(total_minutes: int) -> time:
+    total_minutes = max(0, min(total_minutes, 23 * 60 + 59))
+    return time(total_minutes // 60, total_minutes % 60)
+
+
+def round_up_to_quarter(current: time) -> time:
+    minutes = time_to_minutes(current)
+    rounded = ((minutes + 14) // 15) * 15
+    return minutes_to_time(min(rounded, time_to_minutes(WORKDAY_END)))
+
+
+def format_clock(value: time | str) -> str:
+    parsed = parse_clock(value) if isinstance(value, str) else value
+    return parsed.strftime("%I:%M %p").lstrip("0")
+
+
+def format_slot_label(slot: dict) -> str:
+    day = "Today" if slot["date"] == date.today() else slot["date"].strftime("%a, %b %d")
+    return f"{day} · {format_clock(slot['start_time'])} - {format_clock(slot['end_time'])}"
+
+
+def focus_marker_for_task(task_id: int) -> str:
+    return f"{FOCUS_EVENT_MARKER}{task_id}]"
+
+
+def focus_duration_for_task(task: Task) -> int:
+    if task.priority >= 5:
+        return 90
+    if task.priority >= 3:
+        return 50
+    return 25
+
+
+def task_target_date(task: Task) -> date | None:
+    if task.estimated_completion:
+        return task.estimated_completion.date()
+    if task.deadline:
+        return task.deadline.date()
+    return None
+
+
+def find_event_overlaps(
+    db: Session,
+    event_date: date,
+    start_clock: time,
+    end_clock: time,
+    exclude_event_id: int | None = None,
+) -> list[Event]:
+    query = db.query(Event).filter(Event.event_date == event_date)
+    if exclude_event_id is not None:
+        query = query.filter(Event.id != exclude_event_id)
+
+    overlaps: list[Event] = []
+    for event in query.order_by(Event.start_time.asc()).all():
+        existing_start = parse_clock(event.start_time)
+        existing_end = parse_clock(event.end_time)
+        if start_clock < existing_end and end_clock > existing_start:
+            overlaps.append(event)
+    return overlaps
+
+
+def recurring_dates(base_date: date, repeat: str, repeat_end: date | None) -> list[date]:
+    dates = [base_date]
+    if repeat == "none" or not repeat_end:
+        return dates
+
+    current = base_date + timedelta(days=1)
+    while current <= repeat_end:
+        should_add = False
+        if repeat == "daily":
+            should_add = True
+        elif repeat == "weekdays":
+            should_add = current.weekday() < 5
+        elif repeat == "weekly":
+            should_add = current.weekday() == base_date.weekday()
+
+        if should_add:
+            dates.append(current)
+        current += timedelta(days=1)
+
+    return dates
+
+
+def find_next_focus_slot(
+    db: Session,
+    duration_minutes: int,
+    latest_date: date | None = None,
+    days_ahead: int = 7,
+) -> dict | None:
+    today = date.today()
+    search_end = today + timedelta(days=days_ahead)
+    if latest_date:
+        search_end = min(search_end, max(latest_date, today))
+
+    for offset in range((search_end - today).days + 1):
+        target_date = today + timedelta(days=offset)
+        start_boundary = WORKDAY_START
+        if target_date == today:
+            start_boundary = max(WORKDAY_START, round_up_to_quarter(datetime.now().time()))
+
+        cursor = time_to_minutes(start_boundary)
+        end_of_day = time_to_minutes(WORKDAY_END)
+        if cursor + duration_minutes > end_of_day:
+            continue
+
+        events = db.query(Event).filter(Event.event_date == target_date).order_by(Event.start_time.asc()).all()
+        for event in events:
+            event_start = time_to_minutes(event.start_time)
+            event_end = time_to_minutes(event.end_time)
+            if event_end <= cursor:
+                continue
+            if event_start - cursor >= duration_minutes:
+                return {
+                    "date": target_date,
+                    "start_time": minutes_to_time(cursor),
+                    "end_time": minutes_to_time(cursor + duration_minutes),
+                }
+            cursor = max(cursor, event_end)
+
+        if end_of_day - cursor >= duration_minutes:
+            return {
+                "date": target_date,
+                "start_time": minutes_to_time(cursor),
+                "end_time": minutes_to_time(cursor + duration_minutes),
+            }
+
+    return None
+
+
+def count_scheduled_focus_blocks(db: Session, task_id: int) -> int:
+    marker = focus_marker_for_task(task_id)
+    return db.query(Event).filter(
+        Event.event_date >= date.today(),
+        Event.description.contains(marker),
+    ).count()
 
 
 def calculate_xp(priority: int, deadline: datetime | None, completed_at: datetime) -> int:
@@ -195,6 +378,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     stats = get_stats(db)
     tasks = db.query(Task).filter(Task.status != "completed").order_by(Task.priority.desc(), Task.deadline.asc()).all()
     completed_tasks = db.query(Task).filter(Task.status == "completed").order_by(Task.completed_at.desc()).limit(5).all()
+    today_events = db.query(Event).filter(Event.event_date == date.today()).order_by(Event.start_time.asc()).all()
 
     # Build history for LLM context
     history = get_task_history(db)
@@ -235,45 +419,108 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
             history=history,
             dw_history=dw_history,
         )
+    next_focus_slot = find_next_focus_slot(db, 50, latest_date=date.today() + timedelta(days=2))
+    today_focus_blocks = sum(1 for event in today_events if event.title.startswith(FOCUS_EVENT_PREFIX))
+    urgent_tasks = tasks[:3]
+    task_focus_counts = {task.id: count_scheduled_focus_blocks(db, task.id) for task in tasks}
 
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "tasks": tasks,
-        "completed_tasks": completed_tasks,
-        "stats": stats,
-        "motivation": motivation,
-        "level": level,
-        "xp_in_level": xp_in_level,
-        "streak_multiplier": streak_multiplier,
-        "priority_labels": PRIORITY_LABELS,
-        "now": datetime.utcnow(),
-        "active_session": active_session,
-        "dw_suggestion": dw_suggestion,
-    })
+    return templates.TemplateResponse("index.html", template_context(
+        request,
+        tasks=tasks,
+        completed_tasks=completed_tasks,
+        stats=stats,
+        motivation=motivation,
+        level=level,
+        xp_in_level=xp_in_level,
+        streak_multiplier=streak_multiplier,
+        priority_labels=PRIORITY_LABELS,
+        now=datetime.utcnow(),
+        active_session=active_session,
+        dw_suggestion=dw_suggestion,
+        urgent_tasks=urgent_tasks,
+        next_focus_slot=next_focus_slot,
+        next_focus_slot_label=format_slot_label(next_focus_slot) if next_focus_slot else None,
+        today_events_count=len(today_events),
+        today_focus_blocks=today_focus_blocks,
+        task_focus_counts=task_focus_counts,
+        focus_duration_for_task=focus_duration_for_task,
+    ))
 
 
 @app.get("/tasks/add", response_class=HTMLResponse)
 async def add_task_page(request: Request):
-    return templates.TemplateResponse("add_task.html", {
-        "request": request,
-        "step": "input",
-    })
+    return templates.TemplateResponse("add_task.html", template_context(
+        request,
+        step="input",
+    ))
 
 
 @app.post("/tasks/analyze", response_class=HTMLResponse)
-async def analyze_task_route(request: Request, title: str = Form(...), description: str = Form(""),
-                             db: Session = Depends(get_db)):
+async def analyze_task_route(
+    request: Request,
+    title: str = Form(...),
+    description: str = Form(""),
+    user_deadline: str = Form(""),
+    db: Session = Depends(get_db),
+):
     history = get_task_history(db)
     pending = get_pending_tasks_data(db)
     schedule = get_today_events(db)
-    analysis = analyze_task(title, description, history=history, pending=pending, schedule=schedule)
-    return templates.TemplateResponse("add_task.html", {
-        "request": request,
-        "step": "review",
-        "title": title,
-        "description": description,
-        "analysis": analysis,
-    })
+    analysis = analyze_task(
+        title, description,
+        history=history, pending=pending, schedule=schedule,
+        user_deadline=user_deadline if user_deadline else None,
+    )
+    step = "review" if analysis.get("questions") else "confirm"
+    return templates.TemplateResponse("add_task.html", template_context(
+        request,
+        step=step,
+        title=title,
+        description=description,
+        user_deadline=user_deadline,
+        analysis=analysis,
+    ))
+
+
+@app.post("/tasks/followup", response_class=HTMLResponse)
+async def followup_task_route(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    form = await request.form()
+    title = form.get("title", "")
+    description = form.get("description", "")
+    user_deadline = form.get("user_deadline", "")
+
+    # Collect questions and answers
+    questions = []
+    answers = []
+    i = 0
+    while True:
+        q = form.get(f"question_{i}")
+        a = form.get(f"answer_{i}")
+        if q is None:
+            break
+        questions.append(q)
+        answers.append(a or "")
+        i += 1
+
+    history = get_task_history(db)
+    pending = get_pending_tasks_data(db)
+    schedule = get_today_events(db)
+    analysis = followup_analyze(
+        title, description, questions, answers,
+        history=history, pending=pending, schedule=schedule,
+        user_deadline=user_deadline if user_deadline else None,
+    )
+    return templates.TemplateResponse("add_task.html", template_context(
+        request,
+        step="confirm",
+        title=title,
+        description=description,
+        user_deadline=user_deadline,
+        analysis=analysis,
+    ))
 
 
 @app.post("/tasks/confirm")
@@ -282,25 +529,33 @@ async def confirm_task(
     title: str = Form(...),
     description: str = Form(""),
     priority: int = Form(...),
-    deadline: str = Form(...),
+    deadline: str = Form(""),
+    estimated_completion: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    deadline_dt = datetime.strptime(deadline, "%Y-%m-%d") if deadline else None
+    deadline_dt = parse_date_input(deadline)
+    est_dt = parse_date_input(estimated_completion)
     task = Task(
         title=title,
         description=description,
         priority=max(1, min(5, priority)),
         deadline=deadline_dt,
+        estimated_completion=est_dt,
     )
     db.add(task)
     db.commit()
+    push_alert(request, "success", f'Task "{title}" added with priority P{task.priority}.')
     return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/tasks/{task_id}/complete")
-async def complete_task(task_id: int, db: Session = Depends(get_db)):
+async def complete_task(task_id: int, request: Request, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
+        push_alert(request, "error", "Task not found.")
+        return RedirectResponse(url="/", status_code=303)
+    if task.status == "completed":
+        push_alert(request, "info", f'"{task.title}" is already completed.')
         return RedirectResponse(url="/", status_code=303)
 
     now = datetime.utcnow()
@@ -308,6 +563,7 @@ async def complete_task(task_id: int, db: Session = Depends(get_db)):
     task.completed_at = now
 
     stats = get_stats(db)
+    update_streak(stats)
     xp = calculate_xp(task.priority, task.deadline, now)
     multiplier = get_streak_multiplier(stats.current_streak)
     xp = int(xp * multiplier)
@@ -315,28 +571,69 @@ async def complete_task(task_id: int, db: Session = Depends(get_db)):
     task.xp_earned = xp
     stats.total_xp += xp
     stats.tasks_completed += 1
-    update_streak(stats)
 
     db.commit()
+    push_alert(request, "success", f'Completed "{task.title}" for +{xp} XP.')
     return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/tasks/{task_id}/delete")
-async def delete_task(task_id: int, db: Session = Depends(get_db)):
+async def delete_task(task_id: int, request: Request, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if task:
+        task_title = task.title
         db.delete(task)
         db.commit()
+        push_alert(request, "success", f'Deleted "{task_title}".')
     return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/tasks/{task_id}/start")
-async def start_task(task_id: int, db: Session = Depends(get_db)):
+async def start_task(task_id: int, request: Request, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
-    if task:
+    if task and task.status != "completed":
         task.status = "in_progress"
         db.commit()
+        push_alert(request, "success", f'"{task.title}" is now in progress.')
+    elif task and task.status == "completed":
+        push_alert(request, "info", f'"{task.title}" is already completed.')
     return RedirectResponse(url="/", status_code=303)
+
+
+@app.post("/tasks/{task_id}/plan-focus")
+async def plan_focus_block(task_id: int, request: Request, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        push_alert(request, "error", "Task not found.")
+        return RedirectResponse(url="/", status_code=303)
+    if task.status == "completed":
+        push_alert(request, "info", f'"{task.title}" is already completed.')
+        return RedirectResponse(url="/", status_code=303)
+
+    if count_scheduled_focus_blocks(db, task.id):
+        push_alert(request, "info", f'"{task.title}" already has a scheduled focus block.')
+        return RedirectResponse(url="/schedule", status_code=303)
+
+    duration = focus_duration_for_task(task)
+    latest_date = task_target_date(task)
+    slot = find_next_focus_slot(db, duration, latest_date=latest_date)
+    if not slot:
+        push_alert(request, "error", f'No {duration}m focus slot is free before the task target date.')
+        return RedirectResponse(url="/schedule", status_code=303)
+
+    event = Event(
+        title=f"{FOCUS_EVENT_PREFIX} {task.title}",
+        description=f"{focus_marker_for_task(task.id)} Auto-scheduled focus block for task #{task.id}.",
+        event_date=slot["date"],
+        start_time=slot["start_time"].strftime("%H:%M"),
+        end_time=slot["end_time"].strftime("%H:%M"),
+        category="work",
+        color="accent",
+    )
+    db.add(event)
+    db.commit()
+    push_alert(request, "success", f'Planned {duration}m focus block for "{task.title}" on {format_slot_label(slot)}.')
+    return RedirectResponse(url="/schedule", status_code=303)
 
 
 # ── Deep Work Routes ─────────────────────────────────────────────
@@ -365,18 +662,19 @@ async def deep_work_page(request: Request, db: Session = Depends(get_db)):
         task = db.query(Task).filter(Task.id == s.task_id).first() if s.task_id else None
         past_with_tasks.append({"session": s, "task_title": task.title if task else "General Focus"})
 
-    return templates.TemplateResponse("deepwork.html", {
-        "request": request,
-        "active_session": active_session,
-        "active_task": active_task,
-        "tasks": tasks,
-        "stats": stats,
-        "past_sessions": past_with_tasks,
-    })
+    return templates.TemplateResponse("deepwork.html", template_context(
+        request,
+        active_session=active_session,
+        active_task=active_task,
+        tasks=tasks,
+        stats=stats,
+        past_sessions=past_with_tasks,
+    ))
 
 
 @app.post("/deepwork/start")
 async def start_deep_work(
+    request: Request,
     task_id: int = Form(0),
     duration: int = Form(25),
     db: Session = Depends(get_db),
@@ -393,17 +691,26 @@ async def start_deep_work(
     )
     db.add(session)
     db.commit()
+    push_alert(request, "success", f"Started a {duration}m deep work session.")
     return RedirectResponse(url="/deepwork", status_code=303)
 
 
 @app.post("/deepwork/{session_id}/complete")
 async def complete_deep_work(
     session_id: int,
+    request: Request,
     notes: str = Form(""),
     db: Session = Depends(get_db),
 ):
     session = db.query(DeepWorkSession).filter(DeepWorkSession.id == session_id).first()
     if not session:
+        push_alert(request, "error", "Deep work session not found.")
+        return RedirectResponse(url="/deepwork", status_code=303)
+    if session.status == "completed":
+        push_alert(request, "info", "This deep work session is already completed.")
+        return RedirectResponse(url="/deepwork", status_code=303)
+    if session.status != "active":
+        push_alert(request, "info", "This deep work session is no longer active.")
         return RedirectResponse(url="/deepwork", status_code=303)
 
     now = datetime.utcnow()
@@ -428,16 +735,18 @@ async def complete_deep_work(
     session.xp_earned = xp
 
     db.commit()
+    push_alert(request, "success", f"Deep work complete for +{xp} XP.")
     return RedirectResponse(url="/deepwork", status_code=303)
 
 
 @app.post("/deepwork/{session_id}/cancel")
-async def cancel_deep_work(session_id: int, db: Session = Depends(get_db)):
+async def cancel_deep_work(session_id: int, request: Request, db: Session = Depends(get_db)):
     session = db.query(DeepWorkSession).filter(DeepWorkSession.id == session_id).first()
     if session:
         session.status = "cancelled"
         session.ended_at = datetime.utcnow()
         db.commit()
+        push_alert(request, "info", "Deep work session cancelled.")
     return RedirectResponse(url="/deepwork", status_code=303)
 
 
@@ -473,42 +782,140 @@ async def schedule_page(request: Request, db: Session = Depends(get_db)):
 
     pending_count = db.query(Task).filter(Task.status != "completed").count()
 
-    return templates.TemplateResponse("schedule.html", {
-        "request": request,
-        "today": today,
-        "week_days": week_days,
-        "today_events": today_events,
-        "pending_count": pending_count,
-    })
+    return templates.TemplateResponse("schedule.html", template_context(
+        request,
+        today=today,
+        week_days=week_days,
+        today_events=today_events,
+        pending_count=pending_count,
+        next_focus_slot=find_next_focus_slot(db, 50, latest_date=today + timedelta(days=2)),
+    ))
 
 
 @app.post("/events/add")
 async def add_event(
+    request: Request,
     title: str = Form(...),
     event_date: str = Form(...),
     start_time: str = Form(...),
     end_time: str = Form(...),
     category: str = Form("general"),
     description: str = Form(""),
+    repeat: str = Form("none"),
+    repeat_until: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    event = Event(
+    try:
+        base_date = datetime.strptime(event_date, "%Y-%m-%d").date()
+    except ValueError as exc:
+        push_alert(request, "error", "Invalid event date.")
+        return RedirectResponse(url="/schedule", status_code=303)
+
+    try:
+        start_clock = datetime.strptime(start_time, "%H:%M").time()
+        end_clock = datetime.strptime(end_time, "%H:%M").time()
+    except ValueError as exc:
+        push_alert(request, "error", "Invalid event time.")
+        return RedirectResponse(url="/schedule", status_code=303)
+
+    if start_clock >= end_clock:
+        push_alert(request, "error", "End time must be after start time.")
+        return RedirectResponse(url="/schedule", status_code=303)
+
+    allowed_repeats = {"none", "daily", "weekdays", "weekly"}
+    if repeat not in allowed_repeats:
+        push_alert(request, "error", "Invalid repeat option.")
+        return RedirectResponse(url="/schedule", status_code=303)
+
+    repeat_end = None
+    if repeat_until:
+        try:
+            repeat_end = datetime.strptime(repeat_until, "%Y-%m-%d").date()
+        except ValueError as exc:
+            push_alert(request, "error", "Invalid repeat-until date.")
+            return RedirectResponse(url="/schedule", status_code=303)
+
+    if repeat != "none" and not repeat_end:
+        push_alert(request, "error", "Repeat-until date is required for recurring events.")
+        return RedirectResponse(url="/schedule", status_code=303)
+    if repeat_end and repeat_end < base_date:
+        push_alert(request, "error", "Repeat-until date must be on or after the event date.")
+        return RedirectResponse(url="/schedule", status_code=303)
+
+    for occurrence_date in recurring_dates(base_date, repeat, repeat_end):
+        overlaps = find_event_overlaps(db, occurrence_date, start_clock, end_clock)
+        if overlaps:
+            conflict = overlaps[0]
+            push_alert(
+                request,
+                "error",
+                f'Event overlaps with "{conflict.title}" on {occurrence_date.strftime("%b %d")} at {conflict.start_time}.',
+            )
+            return RedirectResponse(url="/schedule", status_code=303)
+
+    # Create the parent event
+    parent = Event(
         title=title,
         description=description,
-        event_date=datetime.strptime(event_date, "%Y-%m-%d").date(),
+        event_date=base_date,
         start_time=start_time,
         end_time=end_time,
         category=category,
+        repeat=repeat,
+        repeat_until=repeat_end,
     )
-    db.add(event)
+    db.add(parent)
+    db.flush()  # get parent.id
+
+    # Generate recurring instances
+    if repeat != "none" and repeat_end:
+        for current in recurring_dates(base_date, repeat, repeat_end)[1:]:
+            db.add(Event(
+                title=title,
+                description=description,
+                event_date=current,
+                start_time=start_time,
+                end_time=end_time,
+                category=category,
+                repeat=repeat,
+                parent_event_id=parent.id,
+            ))
+
     db.commit()
+    created_count = len(recurring_dates(base_date, repeat, repeat_end))
+    if created_count > 1:
+        push_alert(request, "success", f'Added "{title}" and scheduled {created_count} events in the series.')
+    else:
+        push_alert(request, "success", f'Added "{title}" to your schedule.')
+    return RedirectResponse(url="/schedule", status_code=303)
+
+
+@app.post("/events/{event_id}/delete-series")
+async def delete_event_series(event_id: int, request: Request, db: Session = Depends(get_db)):
+    """Delete an event and all its recurring instances."""
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if event:
+        series_title = event.title
+        if event.parent_event_id:
+            parent_id = event.parent_event_id
+            db.query(Event).filter(Event.parent_event_id == parent_id).delete(synchronize_session=False)
+            parent = db.query(Event).filter(Event.id == parent_id).first()
+            if parent:
+                db.delete(parent)
+        else:
+            db.query(Event).filter(Event.parent_event_id == event_id).delete(synchronize_session=False)
+            db.delete(event)
+        db.commit()
+        push_alert(request, "success", f'Deleted the "{series_title}" series.')
     return RedirectResponse(url="/schedule", status_code=303)
 
 
 @app.post("/events/{event_id}/delete")
-async def delete_event(event_id: int, db: Session = Depends(get_db)):
+async def delete_event(event_id: int, request: Request, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.id == event_id).first()
     if event:
+        title = event.title
         db.delete(event)
         db.commit()
+        push_alert(request, "success", f'Deleted "{title}" from your schedule.')
     return RedirectResponse(url="/schedule", status_code=303)

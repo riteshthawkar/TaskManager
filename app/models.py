@@ -13,7 +13,8 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
     priority: Mapped[int] = mapped_column(Integer, default=3)  # 1 (low) to 5 (critical)
-    deadline: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    deadline: Mapped[datetime] = mapped_column(DateTime, nullable=True)  # user's desired deadline
+    estimated_completion: Mapped[datetime] = mapped_column(DateTime, nullable=True)  # LLM's estimate
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, in_progress, completed
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
@@ -61,4 +62,7 @@ class Event(Base):
     end_time: Mapped[str] = mapped_column(String(5), nullable=False)    # HH:MM
     category: Mapped[str] = mapped_column(String(30), default="general")  # meeting, personal, work, break
     color: Mapped[str] = mapped_column(String(20), default="accent")
+    repeat: Mapped[str] = mapped_column(String(20), default="none")  # none, daily, weekdays, weekly
+    repeat_until: Mapped[date] = mapped_column(Date, nullable=True)
+    parent_event_id: Mapped[int] = mapped_column(Integer, nullable=True)  # links to original repeating event
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

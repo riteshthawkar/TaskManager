@@ -54,7 +54,7 @@ def build_email_body(task: Task, alert_type: str, motivation: str) -> str:
     p_color = priority_colors.get(task.priority, "#FFC107")
 
     alert_headers = {
-        "reminder": ("Reminder: Task Due Tomorrow", "#2196F3"),
+        "reminder": ("Reminder: Task Due Within 24 Hours", "#2196F3"),
         "urgent": ("Urgent: Task Due in 2 Hours!", "#FF9800"),
         "overdue": ("Overdue: Task Past Deadline!", "#F44336"),
     }
@@ -110,22 +110,22 @@ def check_and_send_notifications():
             if not task.reminder_24h_sent and timedelta(hours=0) < time_until <= timedelta(hours=24):
                 motivation = generate_motivation(total_xp, streak, completed, pending_count, nearest)
                 body = build_email_body(task, "reminder", motivation)
-                send_email(f"Reminder: '{task.title}' is due tomorrow", body)
-                task.reminder_24h_sent = True
+                if send_email(f"Reminder: '{task.title}' is due within 24 hours", body):
+                    task.reminder_24h_sent = True
 
             # 2-hour urgent
             elif not task.reminder_2h_sent and timedelta(hours=0) < time_until <= timedelta(hours=2):
                 motivation = generate_motivation(total_xp, streak, completed, pending_count, nearest)
                 body = build_email_body(task, "urgent", motivation)
-                send_email(f"URGENT: '{task.title}' is due in 2 hours!", body)
-                task.reminder_2h_sent = True
+                if send_email(f"URGENT: '{task.title}' is due in 2 hours!", body):
+                    task.reminder_2h_sent = True
 
             # Overdue
             elif not task.overdue_sent and time_until <= timedelta(hours=0):
                 motivation = generate_motivation(total_xp, streak, completed, pending_count, nearest)
                 body = build_email_body(task, "overdue", motivation)
-                send_email(f"OVERDUE: '{task.title}' has passed its deadline!", body)
-                task.overdue_sent = True
+                if send_email(f"OVERDUE: '{task.title}' has passed its deadline!", body):
+                    task.overdue_sent = True
 
         db.commit()
     except Exception as e:

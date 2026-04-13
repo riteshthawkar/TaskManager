@@ -4,3 +4,4 @@ __pycache__/
 taskmanager.db
 *.db
 .DS_Store
+/netlify-keepalive/.env

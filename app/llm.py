@@ -54,8 +54,9 @@ TASK_ANALYSIS_PROMPT = """You are an intelligent, self-improving productivity ma
 
 The user wants to add a new task. Your job:
 1. Look at their COMPLETED TASK HISTORY below to understand their patterns — how long similar tasks actually took, whether they tend to finish on time, what priority levels they typically handle.
-2. Ask 2-3 short clarifying questions (only for things you can't infer).
+2. Ask 0-3 short clarifying questions, but ONLY if something material is unclear from the description. If the task is already clear enough, return an empty questions array.
 3. Suggest a realistic priority (1=low to 5=critical) and deadline based on BOTH the task description AND the user's actual track record.
+4. Estimate how long the task will ACTUALLY take to complete (estimated_completion_date). This should be your honest assessment based on complexity and history — it may be earlier than the deadline for easy tasks, or you may flag if the task seems too complex for the given deadline.
 
 COMPLETED TASK HISTORY:
 {history}
@@ -66,6 +67,8 @@ CURRENT PENDING TASKS:
 TODAY'S SCHEDULE (events/meetings):
 {schedule}
 
+USER'S REQUESTED DEADLINE (if any): {user_deadline}
+
 Rules:
 - If the user consistently misses deadlines, suggest slightly more generous timelines.
 - If they finish tasks faster than expected, tighten the deadline.
@@ -73,6 +76,9 @@ Rules:
 - Factor in their current workload (pending tasks above).
 - Factor in their schedule — if today is packed with meetings, suggest a later deadline.
 - Priority should reflect actual urgency relative to what else is on their plate.
+- If the user gave a deadline, respect it as the suggested_deadline but give your honest estimated_completion_date.
+- For simple tasks, the estimated_completion_date should be sooner than the deadline.
+- If the task seems too complex for the user's deadline, flag this in reasoning.
 
 Today's date: {today}
 
@@ -81,35 +87,98 @@ Respond in this exact JSON format:
     "questions": ["question1", "question2"],
     "suggested_priority": 3,
     "suggested_deadline": "YYYY-MM-DD",
+    "estimated_completion_date": "YYYY-MM-DD",
     "reasoning": "Explain your reasoning, referencing their history and schedule if relevant"
 }}"""
 
 
-def analyze_task(title: str, description: str, history: list = None,
-                 pending: list = None, schedule: list = None) -> dict:
-    """Analyze a task using history + schedule aware LLM."""
-    history = history or []
-    pending = pending or []
-    schedule = schedule or []
+FOLLOWUP_PROMPT = """You are an intelligent productivity manager. The user previously described a task. You asked clarifying questions, and they have now answered them.
 
-    history_block = _build_history_block(history)
+Use their answers to REFINE your suggestions. Be more precise now that you have more information.
+
+COMPLETED TASK HISTORY:
+{history}
+
+CURRENT PENDING TASKS:
+{pending}
+
+TODAY'S SCHEDULE:
+{schedule}
+
+USER'S REQUESTED DEADLINE (if any): {user_deadline}
+
+Today's date: {today}
+
+Respond in this exact JSON format:
+{{
+    "suggested_priority": 3,
+    "suggested_deadline": "YYYY-MM-DD",
+    "estimated_completion_date": "YYYY-MM-DD",
+    "reasoning": "Refined reasoning based on clarifications"
+}}"""
+
+
+def _build_context_blocks(history, pending, schedule):
+    """Build formatted context blocks for LLM prompts."""
+    history_block = _build_history_block(history or [])
     pending_block = json.dumps(
         [{"title": t["title"], "priority": t["priority"],
           "deadline": t.get("deadline"), "status": t["status"]}
-         for t in pending],
+         for t in (pending or [])],
         default=str,
     ) if pending else "No pending tasks."
-
     schedule_block = "No events today." if not schedule else "\n".join(
         f'- {e["start_time"]}–{e["end_time"]}: {e["title"]} ({e.get("category", "general")})'
         for e in schedule
     )
+    return history_block, pending_block, schedule_block
+
+
+def _normalize_date_string(value: str | None, fallback: str) -> str:
+    """Accept only YYYY-MM-DD responses from the model."""
+    if not value:
+        return fallback
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").strftime("%Y-%m-%d")
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _normalize_questions(value) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    questions = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        cleaned = item.strip()
+        if cleaned:
+            questions.append(cleaned)
+        if len(questions) == 3:
+            break
+    return questions
+
+
+def _normalize_priority(value, fallback: int = 3) -> int:
+    try:
+        return max(1, min(5, int(value)))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def analyze_task(title: str, description: str, history: list = None,
+                 pending: list = None, schedule: list = None,
+                 user_deadline: str = None) -> dict:
+    """Analyze a task using history + schedule aware LLM."""
+    history_block, pending_block, schedule_block = _build_context_blocks(history, pending, schedule)
+    default_deadline = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
     try:
         prompt = TASK_ANALYSIS_PROMPT.format(
             history=history_block,
             pending=pending_block,
             schedule=schedule_block,
+            user_deadline=user_deadline or "Not specified — suggest one",
             today=datetime.now().strftime("%Y-%m-%d"),
         )
         response = _get_client().chat.completions.create(
@@ -123,18 +192,87 @@ def analyze_task(title: str, description: str, history: list = None,
             max_tokens=500,
         )
         result = json.loads(response.choices[0].message.content)
+        suggested_deadline = (
+            _normalize_date_string(user_deadline, default_deadline)
+            if user_deadline
+            else _normalize_date_string(result.get("suggested_deadline"), default_deadline)
+        )
+        estimated_completion = _normalize_date_string(
+            result.get("estimated_completion_date"),
+            suggested_deadline,
+        )
         return {
-            "questions": result.get("questions", []),
-            "suggested_priority": max(1, min(5, result.get("suggested_priority", 3))),
-            "suggested_deadline": result.get("suggested_deadline",
-                                             (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")),
-            "reasoning": result.get("reasoning", ""),
+            "questions": _normalize_questions(result.get("questions")),
+            "suggested_priority": _normalize_priority(result.get("suggested_priority", 3)),
+            "suggested_deadline": suggested_deadline,
+            "estimated_completion_date": estimated_completion,
+            "reasoning": str(result.get("reasoning", "")),
         }
     except Exception as e:
+        suggested_deadline = _normalize_date_string(user_deadline, default_deadline) if user_deadline else default_deadline
         return {
-            "questions": ["How urgent is this task?", "What's a reasonable deadline?"],
+            "questions": [],
             "suggested_priority": 3,
-            "suggested_deadline": (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d"),
+            "suggested_deadline": suggested_deadline,
+            "estimated_completion_date": suggested_deadline,
+            "reasoning": f"(Using defaults — API error: {e})",
+        }
+
+
+def followup_analyze(title: str, description: str, questions: list, answers: list,
+                     history: list = None, pending: list = None,
+                     schedule: list = None, user_deadline: str = None) -> dict:
+    """Re-analyze task after user answers clarifying questions."""
+    history_block, pending_block, schedule_block = _build_context_blocks(history, pending, schedule)
+    default_deadline = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+
+    qa_block = "\n".join(
+        f"Q: {q}\nA: {a}" for q, a in zip(questions, answers)
+    )
+
+    try:
+        prompt = FOLLOWUP_PROMPT.format(
+            history=history_block,
+            pending=pending_block,
+            schedule=schedule_block,
+            user_deadline=user_deadline or "Not specified",
+            today=datetime.now().strftime("%Y-%m-%d"),
+        )
+        response = _get_client().chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": (
+                    f"Task: {title}\nDescription: {description}\n\n"
+                    f"Clarifications:\n{qa_block}"
+                )},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7,
+            max_tokens=400,
+        )
+        result = json.loads(response.choices[0].message.content)
+        suggested_deadline = (
+            _normalize_date_string(user_deadline, default_deadline)
+            if user_deadline
+            else _normalize_date_string(result.get("suggested_deadline"), default_deadline)
+        )
+        estimated_completion = _normalize_date_string(
+            result.get("estimated_completion_date"),
+            suggested_deadline,
+        )
+        return {
+            "suggested_priority": _normalize_priority(result.get("suggested_priority", 3)),
+            "suggested_deadline": suggested_deadline,
+            "estimated_completion_date": estimated_completion,
+            "reasoning": str(result.get("reasoning", "")),
+        }
+    except Exception as e:
+        suggested_deadline = _normalize_date_string(user_deadline, default_deadline) if user_deadline else default_deadline
+        return {
+            "suggested_priority": 3,
+            "suggested_deadline": suggested_deadline,
+            "estimated_completion_date": suggested_deadline,
             "reasoning": f"(Using defaults — API error: {e})",
         }
 

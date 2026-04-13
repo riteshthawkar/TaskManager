@@ -1,0 +1,9 @@
+{
+  "name": "taskmanager-netlify-keepalive",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "smoke": "node scripts/smoke-test.mjs"
+  }
+}
