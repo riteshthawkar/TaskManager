@@ -1,4 +1,6 @@
 from __future__ import annotations
+import os
+from pathlib import Path
 from datetime import datetime, date, timedelta
 from contextlib import asynccontextmanager
 
@@ -14,8 +16,7 @@ from app.models import Task, UserStats, DeepWorkSession, Event
 from app.llm import analyze_task, generate_motivation, suggest_deep_work
 from app.notifications import check_and_send_notifications
 
-# Create tables
-Base.metadata.create_all(bind=engine)
+BASE_DIR = Path(__file__).resolve().parent
 
 # Background scheduler for notifications
 scheduler = BackgroundScheduler()
@@ -24,21 +25,48 @@ scheduler.add_job(check_and_send_notifications, "interval", minutes=30, id="noti
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    scheduler.start()
+    # Create tables on startup
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("[STARTUP] Tables created successfully")
+    except Exception as e:
+        print(f"[STARTUP ERROR] Failed to create tables: {e}")
+
+    # Start scheduler
+    try:
+        scheduler.start()
+        print("[STARTUP] Scheduler started")
+    except Exception as e:
+        print(f"[STARTUP ERROR] Scheduler failed: {e}")
+
     # Ensure UserStats row exists
     from app.database import SessionLocal
-    db = SessionLocal()
-    if not db.query(UserStats).first():
-        db.add(UserStats(total_xp=0, current_streak=0, longest_streak=0, tasks_completed=0))
-        db.commit()
-    db.close()
+    try:
+        db = SessionLocal()
+        if not db.query(UserStats).first():
+            db.add(UserStats(total_xp=0, current_streak=0, longest_streak=0, tasks_completed=0))
+            db.commit()
+        db.close()
+        print("[STARTUP] UserStats ready")
+    except Exception as e:
+        print(f"[STARTUP ERROR] UserStats init failed: {e}")
+
     yield
-    scheduler.shutdown()
+
+    try:
+        scheduler.shutdown()
+    except Exception:
+        pass
 
 
 app = FastAPI(title="TaskManager", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
-templates = Jinja2Templates(directory="app/templates")
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 # ── Helpers ──────────────────────────────────────────────────────
