@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>TaskManager</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Tasks">
+    <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #000000;
+            --surface: rgba(28,28,30,0.72);
+            --surface-solid: #1c1c1e;
+            --surface-hover: rgba(44,44,46,0.8);
+            --surface-raised: rgba(44,44,46,0.65);
+            --border: rgba(255,255,255,0.08);
+            --border-hover: rgba(255,255,255,0.14);
+            --text: #f5f5f7;
+            --text-secondary: rgba(255,255,255,0.50);
+            --text-tertiary: rgba(255,255,255,0.30);
+            --accent: #0a84ff;
+            --green: #30d158;
+            --orange: #ff9f0a;
+            --red: #ff453a;
+            --purple: #bf5af2;
+            --cyan: #64d2ff;
+            --yellow: #ffd60a;
+            --radius: 16px;
+            --radius-sm: 12px;
+            --radius-xs: 10px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .container { max-width: 800px; margin: 0 auto; padding: 0 20px; }
+
+        /* ── Nav ────────────────────────── */
+        nav {
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(40px) saturate(180%);
+            -webkit-backdrop-filter: blur(40px) saturate(180%);
+            border-bottom: 1px solid var(--border);
+            padding: 14px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        nav .container { display: flex; justify-content: space-between; align-items: center; }
+        nav .brand {
+            font-size: 17px;
+            font-weight: 700;
+            color: var(--text);
+            text-decoration: none;
+            letter-spacing: -0.3px;
+        }
+        nav .nav-links { display: flex; gap: 2px; }
+        nav .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 7px 14px;
+            border-radius: var(--radius-xs);
+            transition: all 0.2s;
+        }
+        nav .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+        nav .nav-links a.nav-cta {
+            background: var(--accent);
+            color: #fff;
+            font-weight: 600;
+        }
+        nav .nav-links a.nav-cta:hover { background: #409cff; }
+
+        .page-content { padding: 32px 0 80px; }
+
+        /* ── Glass Card ────────────────── */
+        .card {
+            background: var(--surface);
+            backdrop-filter: blur(40px) saturate(150%);
+            -webkit-backdrop-filter: blur(40px) saturate(150%);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 12px;
+        }
+
+        /* ── Buttons ───────────────────── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 16px;
+            border-radius: var(--radius-xs);
+            border: none;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: inherit;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: #409cff; }
+        .btn-success { background: rgba(48,209,88,0.14); color: var(--green); border: 1px solid rgba(48,209,88,0.18); }
+        .btn-success:hover { background: rgba(48,209,88,0.22); }
+        .btn-danger { background: rgba(255,69,58,0.12); color: var(--red); border: 1px solid rgba(255,69,58,0.15); }
+        .btn-danger:hover { background: rgba(255,69,58,0.20); }
+        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
+        .btn-outline:hover { background: rgba(255,255,255,0.05); color: var(--text); border-color: var(--border-hover); }
+        .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; }
+        .btn-lg { padding: 12px 24px; font-size: 14px; }
+
+        /* ── Forms ──────────────────────── */
+        input, textarea, select {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xs);
+            color: var(--text);
+            font-size: 14px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: rgba(255,255,255,0.07);
+        }
+        input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
+        textarea { resize: vertical; min-height: 80px; }
+        select { cursor: pointer; }
+        select option { background: var(--surface-solid); color: var(--text); }
+        label { display: block; font-weight: 500; margin-bottom: 6px; font-size: 13px; color: var(--text-secondary); }
+        .form-group { margin-bottom: 16px; }
+
+        /* ── Badges ─────────────────────── */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .p1 { background: rgba(48,209,88,0.12); color: var(--green); }
+        .p2 { background: rgba(100,210,255,0.12); color: var(--cyan); }
+        .p3 { background: rgba(255,214,10,0.12); color: var(--yellow); }
+        .p4 { background: rgba(255,159,10,0.12); color: var(--orange); }
+        .p5 { background: rgba(255,69,58,0.12); color: var(--red); }
+
+        .status-pending { color: var(--text-tertiary); }
+        .status-in_progress { color: var(--accent); }
+        .status-completed { color: var(--green); }
+
+        /* ── Typography ────────────────── */
+        h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+        h2 { font-size: 17px; font-weight: 600; margin-bottom: 12px; letter-spacing: -0.2px; }
+        .muted { color: var(--text-secondary); font-size: 13px; }
+
+        /* ── Utilities ─────────────────── */
+        .flex-between { display: flex; justify-content: space-between; align-items: center; }
+        .mb-sm { margin-bottom: 8px; }
+        .mb-md { margin-bottom: 16px; }
+        .mt-xs { margin-top: 4px; }
+
+        /* ── Animations ────────────────── */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeIn 0.35s ease-out both; }
+        .d1 { animation-delay: 0.04s; }
+        .d2 { animation-delay: 0.08s; }
+        .d3 { animation-delay: 0.12s; }
+        .d4 { animation-delay: 0.16s; }
+
+        /* ── PWA standalone ─────────────── */
+        @media (display-mode: standalone) {
+            body { padding-top: env(safe-area-inset-top); }
+            .page-content { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+        }
+
+        /* ── Mobile ─────────────────────── */
+        @media (max-width: 600px) {
+            .container { padding: 0 14px; }
+            .page-content { padding: 20px 0 60px; }
+            nav { padding: 10px 0; }
+            nav .container { gap: 8px; }
+            nav .nav-links { gap: 0; }
+            nav .nav-links a { padding: 6px 8px; font-size: 11px; }
+            nav .nav-links a.nav-cta { padding: 6px 10px; }
+            nav .brand { font-size: 15px; }
+            h1 { font-size: 22px; }
+            h2 { font-size: 16px; }
+            .btn-lg { padding: 11px 18px; font-size: 13px; }
+            .flex-between { flex-wrap: wrap; gap: 10px; }
+        }
+
+        {% block extra_style %}{% endblock %}
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <a href="/" class="brand">TaskManager</a>
+            <div class="nav-links">
+                <a href="/">Home</a>
+                <a href="/schedule">Schedule</a>
+                <a href="/deepwork">Focus</a>
+                <a href="/tasks/add" class="nav-cta">+ New</a>
+            </div>
+        </div>
+    </nav>
+    <div class="container">
+        <div class="page-content">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js')
+                .then(() => console.log('SW registered'))
+                .catch((e) => console.log('SW failed:', e));
+        }
+    </script>
+</body>
+</html>

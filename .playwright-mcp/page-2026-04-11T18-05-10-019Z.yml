@@ -1,0 +1,28 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - link "TaskManager" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - generic [ref=e5]:
+        - link "Dashboard" [ref=e6] [cursor=pointer]:
+          - /url: /
+        - link "+ Add Task" [ref=e7] [cursor=pointer]:
+          - /url: /tasks/add
+  - generic [ref=e8]:
+    - generic [ref=e9]: Every task you complete is a step forward. Let's get one done today!
+    - generic [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e12]: "0"
+        - generic [ref=e13]: Day Streak
+      - generic [ref=e14]:
+        - generic [ref=e15]: Lv.1
+        - generic [ref=e16]: 0 XP total
+      - generic [ref=e18]:
+        - generic [ref=e19]: "0"
+        - generic [ref=e20]: Tasks Done
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - heading "Active Tasks" [level=2] [ref=e23]
+        - link "+ New Task" [ref=e24] [cursor=pointer]:
+          - /url: /tasks/add
+      - paragraph [ref=e25]: No active tasks. Add one to get started!

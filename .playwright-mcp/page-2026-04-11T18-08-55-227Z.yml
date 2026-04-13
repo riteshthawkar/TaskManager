@@ -1,0 +1,37 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]:
+      - link "TaskManager" [ref=e4] [cursor=pointer]:
+        - /url: /
+      - generic [ref=e5]:
+        - link "Dashboard" [ref=e6] [cursor=pointer]:
+          - /url: /
+        - link "Deep Work" [ref=e7] [cursor=pointer]:
+          - /url: /deepwork
+        - link "+ Add Task" [ref=e8] [cursor=pointer]:
+          - /url: /tasks/add
+  - generic [ref=e9]:
+    - generic [ref=e10]: Every task you complete is a step forward. Let's get one done today!
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - generic [ref=e13]: "0"
+        - generic [ref=e14]: Day Streak
+      - generic [ref=e15]:
+        - generic [ref=e16]: Lv.1
+        - generic [ref=e17]: 0 XP total
+      - generic [ref=e19]:
+        - generic [ref=e20]: "0"
+        - generic [ref=e21]: Tasks Done
+    - generic [ref=e22]:
+      - generic [ref=e23]: ⏱
+      - generic [ref=e24]:
+        - generic [ref=e25]: Deep Work Sessions
+        - generic [ref=e26]: Block focused time to power through your tasks. Earn bonus XP.
+      - link "Open" [ref=e27] [cursor=pointer]:
+        - /url: /deepwork
+    - generic [ref=e28]:
+      - generic [ref=e29]:
+        - heading "Active Tasks" [level=2] [ref=e30]
+        - link "+ New Task" [ref=e31] [cursor=pointer]:
+          - /url: /tasks/add
+      - paragraph [ref=e32]: No active tasks. Add one to get started!

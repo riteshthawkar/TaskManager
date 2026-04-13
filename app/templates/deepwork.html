@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.dw-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.dw-stat {
+    background: var(--surface);
+    backdrop-filter: blur(40px) saturate(150%);
+    -webkit-backdrop-filter: blur(40px) saturate(150%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 16px;
+    text-align: center;
+}
+.dw-stat-val { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+.dw-stat-lbl { font-size: 11px; color: var(--text-secondary); margin-top: 2px; font-weight: 500; }
+
+/* ── Timer ─────────────────────── */
+.timer-card {
+    background: var(--surface);
+    backdrop-filter: blur(40px) saturate(150%);
+    -webkit-backdrop-filter: blur(40px) saturate(150%);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 44px 32px;
+    text-align: center;
+    margin-bottom: 12px;
+}
+.timer-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-tertiary);
+}
+.timer-task {
+    font-size: 16px;
+    font-weight: 600;
+    margin: 6px 0;
+    letter-spacing: -0.2px;
+}
+.timer-display {
+    font-size: 72px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -2px;
+    margin: 20px 0 16px;
+    color: var(--text);
+}
+.timer-track {
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    height: 3px;
+    margin: 0 auto 12px;
+    max-width: 320px;
+    overflow: hidden;
+}
+.timer-fill {
+    background: var(--green);
+    height: 100%;
+    border-radius: 4px;
+    transition: width 1s linear;
+}
+.timer-sub {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+.timer-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 24px;
+}
+.btn-finish {
+    background: var(--green);
+    color: #fff;
+    padding: 10px 28px;
+    border-radius: var(--radius-xs);
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.btn-finish:hover { background: #3bda65; }
+.btn-abort {
+    background: rgba(255,255,255,0.05);
+    color: var(--text-secondary);
+    padding: 10px 20px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+}
+.btn-abort:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.notes-field {
+    width: 100%;
+    max-width: 360px;
+    margin: 16px auto 0;
+    display: block;
+    padding: 9px 14px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+}
+.notes-field:focus { outline: none; border-color: var(--green); }
+.notes-field::placeholder { color: var(--text-tertiary); }
+
+/* ── Start ─────────────────────── */
+.start-card {
+    background: var(--surface);
+    backdrop-filter: blur(40px) saturate(150%);
+    -webkit-backdrop-filter: blur(40px) saturate(150%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 28px 24px;
+    margin-bottom: 12px;
+}
+.durations {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 14px 0 20px;
+}
+.dur {
+    background: rgba(255,255,255,0.03);
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.dur:hover { border-color: var(--border-hover); }
+.dur.picked { border-color: var(--accent); background: rgba(10,132,255,0.05); }
+.dur input { display: none; }
+.dur-val { font-size: 32px; font-weight: 700; letter-spacing: -0.5px; }
+.dur-lbl { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
+.dur-xp { font-size: 11px; color: var(--accent); font-weight: 600; margin-top: 6px; }
+
+/* ── History ───────────────────── */
+.session-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+.session-row:last-child { border-bottom: none; }
+.s-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+.s-body { flex: 1; }
+.s-name { font-size: 13px; font-weight: 600; }
+.s-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
+.s-xp { font-size: 12px; color: var(--accent); font-weight: 600; }
+
+@media (max-width: 600px) {
+    .timer-card { padding: 32px 20px; }
+    .timer-display { font-size: 52px; }
+    .durations { gap: 8px; }
+    .dur { padding: 18px 10px; }
+    .dur-val { font-size: 26px; }
+    .timer-actions { flex-direction: column; }
+    .start-card { padding: 20px 16px; }
+}
+{% endblock %}
+
+{% block content %}
+<div class="flex-between fade-in" style="margin-bottom: 20px;">
+    <div>
+        <h1>Deep Work</h1>
+        <p class="muted mt-xs">Focused sessions for important tasks.</p>
+    </div>
+    <a href="/" class="btn btn-outline">Dashboard</a>
+</div>
+
+<div class="dw-stats">
+    <div class="dw-stat fade-in d1">
+        <div class="dw-stat-val" style="color: var(--green);">{{ stats.deep_work_sessions_completed }}</div>
+        <div class="dw-stat-lbl">Sessions</div>
+    </div>
+    <div class="dw-stat fade-in d2">
+        <div class="dw-stat-val" style="color: var(--purple);">{{ (stats.total_deep_work_minutes / 60) | round(1) }}h</div>
+        <div class="dw-stat-lbl">Focus Time</div>
+    </div>
+</div>
+
+{% if active_session %}
+<div class="timer-card fade-in d3" id="tc">
+    <div class="timer-label">Deep Work</div>
+    <div class="timer-task">{{ active_task.title if active_task else "General Focus" }}</div>
+    <div class="timer-display" id="timer">--:--</div>
+    <div class="timer-track">
+        <div class="timer-fill" id="fill" style="width:0%"></div>
+    </div>
+    <div class="timer-sub" id="remaining"></div>
+
+    <form method="post" action="/deepwork/{{ active_session.id }}/complete" id="cf">
+        <input type="text" name="notes" class="notes-field" placeholder="What did you accomplish? (optional)">
+        <div class="timer-actions">
+            <button type="submit" class="btn-finish">Complete</button>
+            <button type="button" class="btn-abort" onclick="document.getElementById('xf').submit()">Cancel</button>
+        </div>
+    </form>
+    <form method="post" action="/deepwork/{{ active_session.id }}/cancel" id="xf" style="display:none;"></form>
+</div>
+
+<script>
+(function(){
+    var s=new Date("{{ active_session.started_at.isoformat() }}Z"),
+        p={{ active_session.planned_duration }},
+        t=p*60;
+    function u(){
+        var n=new Date(),e=Math.floor((n-s)/1000),r=Math.max(0,t-e),
+            m=Math.floor(r/60),sc=r%60;
+        document.getElementById('timer').textContent=
+            String(m).padStart(2,'0')+':'+String(sc).padStart(2,'0');
+        document.getElementById('fill').style.width=Math.min(100,e/t*100)+'%';
+        if(r<=0){
+            document.getElementById('timer').textContent='00:00';
+            document.getElementById('remaining').textContent='Session complete';
+            document.getElementById('tc').style.borderColor='rgba(48,209,88,0.25)';
+        }else{
+            document.getElementById('remaining').textContent=m+'m '+sc+'s of '+p+'min';
+        }
+    }
+    u();setInterval(u,1000);
+})();
+</script>
+
+{% else %}
+<div class="start-card fade-in d3">
+    <h2>Start a Session</h2>
+    <p class="muted">Pick a task, choose duration, enter the zone.</p>
+
+    <form method="post" action="/deepwork/start">
+        <div class="form-group" style="margin-top:16px;">
+            <label for="task_id">Focus task</label>
+            <select id="task_id" name="task_id">
+                <option value="0">General Focus (no specific task)</option>
+                {% for task in tasks %}
+                <option value="{{ task.id }}">[P{{ task.priority }}] {{ task.title }}{% if task.deadline %} — due {{ task.deadline.strftime('%b %d') }}{% endif %}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <label>Duration</label>
+        <div class="durations">
+            <label class="dur picked" onclick="pick(this)">
+                <input type="radio" name="duration" value="25" checked>
+                <div class="dur-val">25</div>
+                <div class="dur-lbl">minutes</div>
+                <div class="dur-xp">+15 XP</div>
+            </label>
+            <label class="dur" onclick="pick(this)">
+                <input type="radio" name="duration" value="50">
+                <div class="dur-val">50</div>
+                <div class="dur-lbl">minutes</div>
+                <div class="dur-xp">+35 XP</div>
+            </label>
+            <label class="dur" onclick="pick(this)">
+                <input type="radio" name="duration" value="90">
+                <div class="dur-val">90</div>
+                <div class="dur-lbl">minutes</div>
+                <div class="dur-xp">+60 XP</div>
+            </label>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg" style="width:100%;">Start Deep Work</button>
+    </form>
+</div>
+
+<script>
+function pick(el){
+    document.querySelectorAll('.dur').forEach(function(d){d.classList.remove('picked')});
+    el.classList.add('picked');
+    el.querySelector('input').checked=true;
+}
+</script>
+{% endif %}
+
+{% if past_sessions %}
+<div class="card fade-in d4">
+    <h2>Recent Sessions</h2>
+    {% for item in past_sessions %}
+    <div class="session-row">
+        <div class="s-dot"></div>
+        <div class="s-body">
+            <div class="s-name">{{ item.task_title }}</div>
+            <div class="s-meta">
+                {{ item.session.actual_duration }}min &middot;
+                {{ item.session.started_at.strftime('%b %d, %I:%M %p') }}
+                {% if item.session.notes %} &middot; {{ item.session.notes[:40] }}{% endif %}
+            </div>
+        </div>
+        <div class="s-xp">+{{ item.session.xp_earned }} XP</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
