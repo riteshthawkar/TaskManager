@@ -1,4 +1,4 @@
-const CACHE_NAME = 'taskmanager-v1';
+const CACHE_NAME = 'taskmanager-v2';
 const STATIC_ASSETS = [
   '/',
   '/tasks/add',
