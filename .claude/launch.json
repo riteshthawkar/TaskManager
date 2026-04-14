@@ -4,7 +4,7 @@
     {
       "name": "taskmanager",
       "runtimeExecutable": "/Library/Developer/CommandLineTools/usr/bin/python3",
-      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8099", "--reload"],
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8099"],
       "port": 8099
     }
   ]
