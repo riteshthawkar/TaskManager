@@ -210,14 +210,14 @@ def analyze_task(title: str, description: str, history: list = None,
             "estimated_completion_date": estimated_completion,
             "reasoning": str(result.get("reasoning", "")),
         }
-    except Exception as e:
+    except Exception:
         suggested_deadline = _normalize_date_string(user_deadline, default_deadline) if user_deadline else default_deadline
         return {
             "questions": [],
             "suggested_priority": 3,
             "suggested_deadline": suggested_deadline,
             "estimated_completion_date": suggested_deadline,
-            "reasoning": f"(Using defaults — API error: {e})",
+            "reasoning": "AI analysis is temporarily unavailable, so default suggestions were used.",
         }
 
 
@@ -269,13 +269,13 @@ def followup_analyze(title: str, description: str, questions: list, answers: lis
             "estimated_completion_date": estimated_completion,
             "reasoning": str(result.get("reasoning", "")),
         }
-    except Exception as e:
+    except Exception:
         suggested_deadline = _normalize_date_string(user_deadline, default_deadline) if user_deadline else default_deadline
         return {
             "suggested_priority": 3,
             "suggested_deadline": suggested_deadline,
             "estimated_completion_date": suggested_deadline,
-            "reasoning": f"(Using defaults — API error: {e})",
+            "reasoning": "AI refinement is temporarily unavailable, so default suggestions were used.",
         }
 
 

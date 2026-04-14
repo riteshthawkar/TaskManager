@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% block extra_style %}
+/* ── Steps Indicator ─────────── */
 .steps {
     display: flex;
     gap: 4px;
@@ -15,112 +16,123 @@
     align-items: center;
     gap: 6px;
     padding: 6px 14px;
-    border-radius: 20px;
+    border-radius: 999px;
     font-size: 12px;
     font-weight: 500;
     color: var(--text-tertiary);
-    background: rgba(255,255,255,0.03);
+    background: rgba(255,255,255,0.02);
     border: 1px solid transparent;
     flex: 0 0 auto;
     white-space: nowrap;
 }
 .step.on {
-    color: var(--accent);
-    background: rgba(10,132,255,0.08);
-    border-color: rgba(10,132,255,0.15);
+    color: var(--accent-bright);
+    background: var(--accent-glow);
+    border-color: rgba(149,255,69,0.20);
+    box-shadow: 0 0 12px rgba(149,255,69,0.08);
 }
 .step.done {
     color: var(--green);
-    background: rgba(48,209,88,0.08);
-    border-color: rgba(48,209,88,0.15);
+    background: var(--green-glow);
+    border-color: rgba(0,255,157,0.20);
+    box-shadow: 0 0 12px rgba(0,255,157,0.08);
 }
 .step-n {
-    width: 18px; height: 18px;
+    width: 20px; height: 20px;
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: 10px;
     font-weight: 700;
     background: rgba(255,255,255,0.06);
 }
-.step.on .step-n { background: var(--accent); color: #fff; }
-.step.done .step-n { background: var(--green); color: #fff; }
+.step.on .step-n { background: var(--accent); color: #000; box-shadow: 0 0 8px rgba(149,255,69,0.35); }
+.step.done .step-n { background: var(--green); color: #000; box-shadow: 0 0 8px rgba(48,255,133,0.35); }
 
+/* ── Analysis Card ───────────── */
 .analysis {
     background: var(--surface);
-    backdrop-filter: blur(40px) saturate(150%);
-    -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 16px;
     margin-bottom: 14px;
+    box-shadow: var(--shadow-sm);
 }
 .q-item {
-    background: rgba(255,255,255,0.03);
+    background: rgba(255,255,255,0.025);
     border: 1px solid var(--border);
     border-radius: var(--radius-xs);
-    padding: 12px 14px;
+    padding: 14px;
+    margin-bottom: 8px;
+}
+.q-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-bright);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     margin-bottom: 6px;
+}
+.q-text {
     font-size: 13px;
     color: var(--text-secondary);
     line-height: 1.5;
-}
-.q-label {
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-tertiary);
-    margin-bottom: 6px;
+    margin-bottom: 10px;
 }
 .q-answer {
     width: 100%;
-    padding: 8px 12px;
-    background: rgba(255,255,255,0.05);
+    padding: 10px 12px;
+    background: rgba(255,255,255,0.04);
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--text);
-    font-size: 13px;
+    font-size: 14px;
     font-family: inherit;
-    margin-top: 8px;
 }
-.q-answer:focus { outline: none; border-color: var(--accent); }
+.q-answer:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow), 0 0 16px rgba(149,255,69,0.10); }
 .q-answer::placeholder { color: var(--text-tertiary); }
+
+/* ── Reasoning Block ─────────── */
 .reasoning {
-    border-left: 2px solid var(--orange);
-    padding: 10px 14px;
-    margin-top: 14px;
+    border-left: 3px solid var(--accent);
+    padding: 12px 14px;
+    margin-top: 16px;
     font-size: 13px;
     color: var(--text-secondary);
-    background: rgba(255,159,10,0.04);
+    background: var(--accent-glow);
     border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
     line-height: 1.6;
+    box-shadow: 0 0 16px rgba(149,255,69,0.05);
 }
-.reasoning strong { color: var(--text); }
+.reasoning strong { color: var(--text); font-weight: 600; }
 
+/* ── Preview Bar ─────────────── */
 .preview-bar {
     background: var(--surface);
-    backdrop-filter: blur(40px) saturate(150%);
-    -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 16px;
     margin-bottom: 14px;
+    box-shadow: var(--shadow-sm);
 }
-.preview-title { font-size: 16px; font-weight: 600; letter-spacing: -0.2px; }
-.preview-desc { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+.preview-title { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+.preview-desc { font-size: 13px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5; }
 
 .est-badge {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 12px;
+    padding: 8px 14px;
     border-radius: 8px;
     font-size: 12px;
     font-weight: 600;
-    background: rgba(48,209,88,0.08);
+    background: var(--green-glow);
     color: var(--green);
-    border: 1px solid rgba(48,209,88,0.12);
-    margin-top: 10px;
+    border: 1px solid rgba(48,255,133,0.18);
+    margin-top: 12px;
+    box-shadow: 0 0 12px rgba(48,255,133,0.06);
 }
 
+/* ── Form Layouts ────────────── */
 .two-col {
     display: grid;
     grid-template-columns: 1fr;
@@ -144,21 +156,23 @@
 .skip-link {
     display: block;
     text-align: center;
-    margin-top: 12px;
+    margin-top: 14px;
     font-size: 12px;
     color: var(--text-tertiary);
     text-decoration: none;
+    padding: 8px;
+    border-radius: 8px;
+    transition: all 0.2s;
 }
-.skip-link:hover { color: var(--text-secondary); }
+.skip-link:hover { color: var(--text-secondary); background: rgba(255,255,255,0.03); }
 
 @media (min-width: 720px) {
     .analysis,
     .preview-bar {
         padding: 20px;
-        margin-bottom: 12px;
     }
-    .two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .three-col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .two-col { grid-template-columns: repeat(2, 1fr); }
+    .three-col { grid-template-columns: repeat(3, 1fr); }
     .form-btns { flex-direction: row; }
     .steps {
         overflow: visible;
@@ -170,7 +184,7 @@
 {% block content %}
 <div class="fade-in" style="margin-bottom: 24px;">
     <h1>Add New Task</h1>
-    <p class="muted mt-xs">Describe your task and AI will suggest priority and deadline.</p>
+    <p class="muted mt-xs">Describe your task and AI will help prioritize it.</p>
 </div>
 
 <div class="steps fade-in d1">
@@ -181,10 +195,7 @@
         <span class="step-n">2</span> AI Review
     </div>
     <div class="step {% if step == 'confirm' %}on{% endif %}">
-        <span class="step-n">3</span> Clarify
-    </div>
-    <div class="step">
-        <span class="step-n">4</span> Confirm
+        <span class="step-n">3</span> Confirm
     </div>
 </div>
 
@@ -192,6 +203,7 @@
 <div class="card fade-in d2">
     <h2>What do you need to do?</h2>
     <form method="post" action="/tasks/analyze">
+        {{ csrf_input(request) }}
         <div class="form-group">
             <label for="title">Task title</label>
             <input type="text" id="title" name="title" placeholder="e.g., Finish quarterly report" required>
@@ -201,7 +213,7 @@
             <textarea id="description" name="description" placeholder="More context helps the AI give better suggestions..."></textarea>
         </div>
         <div class="form-group">
-            <label for="user_deadline">Your deadline (optional — AI will suggest one if blank)</label>
+            <label for="user_deadline">Your deadline (optional)</label>
             <input type="date" id="user_deadline" name="user_deadline">
         </div>
         <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Analyze with AI</button>
@@ -212,13 +224,14 @@
 <div class="preview-bar fade-in d1">
     <div class="preview-title">{{ title }}</div>
     {% if description %}<div class="preview-desc">{{ description }}</div>{% endif %}
-    {% if user_deadline %}<div class="preview-desc" style="margin-top: 4px;">Your deadline: {{ user_deadline }}</div>{% endif %}
+    {% if user_deadline %}<div class="preview-desc" style="margin-top: 4px; color: var(--accent);">Deadline: {{ user_deadline }}</div>{% endif %}
 </div>
 
 <div class="analysis fade-in d2">
-    <h2>AI Coach</h2>
-    <p class="muted mb-md">Answer these to help refine the AI's suggestions:</p>
+    <h2>AI Coach Questions</h2>
+    <p class="muted mb-md">Answer to help refine the AI's suggestions:</p>
     <form method="post" action="/tasks/followup">
+        {{ csrf_input(request) }}
         <input type="hidden" name="title" value="{{ title }}">
         <input type="hidden" name="description" value="{{ description }}">
         <input type="hidden" name="user_deadline" value="{{ user_deadline or '' }}">
@@ -226,7 +239,7 @@
         {% for q in analysis.questions %}
         <div class="q-item">
             <div class="q-label">Question {{ loop.index }}</div>
-            <div>{{ q }}</div>
+            <div class="q-text">{{ q }}</div>
             <input type="hidden" name="question_{{ loop.index0 }}" value="{{ q }}">
             <input type="text" class="q-answer" name="answer_{{ loop.index0 }}" placeholder="Your answer...">
         </div>
@@ -238,9 +251,9 @@
 
         {% if analysis.estimated_completion_date and analysis.estimated_completion_date != analysis.suggested_deadline %}
         <div class="est-badge">
-            AI estimates completion by {{ analysis.estimated_completion_date }}
+            Estimated completion: {{ analysis.estimated_completion_date }}
             {% if user_deadline and analysis.estimated_completion_date > user_deadline %}
-                — this may be tight for your deadline
+                &mdash; may be tight
             {% endif %}
         </div>
         {% endif %}
@@ -251,15 +264,16 @@
         </div>
     </form>
 
-    <!-- Skip clarifications and go straight to confirm -->
+    <!-- Skip shortcut -->
     <form method="post" action="/tasks/confirm" style="margin-top: 0;">
+        {{ csrf_input(request) }}
         <input type="hidden" name="title" value="{{ title }}">
         <input type="hidden" name="description" value="{{ description }}">
         <input type="hidden" name="priority" value="{{ analysis.suggested_priority }}">
         <input type="hidden" name="deadline" value="{{ analysis.suggested_deadline }}">
         <input type="hidden" name="estimated_completion" value="{{ analysis.estimated_completion_date or '' }}">
         <button type="submit" class="skip-link" style="background:none; border:none; cursor:pointer; font-family:inherit; width:100%;">
-            Skip questions — use AI suggestions as-is
+            Skip &mdash; use AI suggestions as-is
         </button>
     </form>
 </div>
@@ -268,24 +282,25 @@
 <div class="preview-bar fade-in d1">
     <div class="preview-title">{{ title }}</div>
     {% if description %}<div class="preview-desc">{{ description }}</div>{% endif %}
-    {% if user_deadline %}<div class="preview-desc" style="margin-top: 4px;">Your deadline: {{ user_deadline }}</div>{% endif %}
+    {% if user_deadline %}<div class="preview-desc" style="margin-top: 4px; color: var(--accent);">Your deadline: {{ user_deadline }}</div>{% endif %}
 </div>
 
 <div class="card fade-in d2">
     <h2>Confirm or Adjust</h2>
-    <p class="muted">Refined AI suggestions below. Change if needed.</p>
+    <p class="muted">Refined suggestions below. Adjust if needed.</p>
     <form method="post" action="/tasks/confirm">
+        {{ csrf_input(request) }}
         <input type="hidden" name="title" value="{{ title }}">
         <input type="hidden" name="description" value="{{ description }}">
         <div class="three-col">
             <div class="form-group">
                 <label for="priority">Priority</label>
                 <select id="priority" name="priority">
-                    <option value="1" {% if analysis.suggested_priority == 1 %}selected{% endif %}>1 — Low</option>
-                    <option value="2" {% if analysis.suggested_priority == 2 %}selected{% endif %}>2 — Medium-Low</option>
-                    <option value="3" {% if analysis.suggested_priority == 3 %}selected{% endif %}>3 — Medium</option>
-                    <option value="4" {% if analysis.suggested_priority == 4 %}selected{% endif %}>4 — High</option>
-                    <option value="5" {% if analysis.suggested_priority == 5 %}selected{% endif %}>5 — Critical</option>
+                    <option value="1" {% if analysis.suggested_priority == 1 %}selected{% endif %}>1 &mdash; Low</option>
+                    <option value="2" {% if analysis.suggested_priority == 2 %}selected{% endif %}>2 &mdash; Medium-Low</option>
+                    <option value="3" {% if analysis.suggested_priority == 3 %}selected{% endif %}>3 &mdash; Medium</option>
+                    <option value="4" {% if analysis.suggested_priority == 4 %}selected{% endif %}>4 &mdash; High</option>
+                    <option value="5" {% if analysis.suggested_priority == 5 %}selected{% endif %}>5 &mdash; Critical</option>
                 </select>
             </div>
             <div class="form-group">
@@ -293,7 +308,7 @@
                 <input type="date" id="deadline" name="deadline" value="{{ analysis.suggested_deadline }}">
             </div>
             <div class="form-group">
-                <label for="estimated_completion">Est. Completion</label>
+                <label for="estimated_completion">Estimated Completion</label>
                 <input type="date" id="estimated_completion" name="estimated_completion" value="{{ analysis.estimated_completion_date or '' }}">
             </div>
         </div>

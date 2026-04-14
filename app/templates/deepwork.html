@@ -1,67 +1,78 @@
 {% extends "base.html" %}
 
 {% block extra_style %}
+/* ── Stats ─────────────────────── */
 .dw-stats {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 10px;
-    margin-bottom: 12px;
-}
-.dw-layout {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 14px;
+    margin-bottom: 14px;
 }
 .dw-stat {
     background: var(--surface);
-    backdrop-filter: blur(40px) saturate(150%);
-    -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 18px 16px;
+    padding: 16px 14px;
     text-align: center;
+    box-shadow: var(--shadow-sm);
 }
-.dw-stat-val { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
-.dw-stat-lbl { font-size: 11px; color: var(--text-secondary); margin-top: 2px; font-weight: 500; }
+.dw-stat-val {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    line-height: 1;
+}
+.dw-stat-lbl {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    font-weight: 500;
+}
+
+/* ── Layout ────────────────────── */
+.dw-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
 
 /* ── Timer ─────────────────────── */
 .timer-card {
     background: var(--surface);
-    backdrop-filter: blur(40px) saturate(150%);
-    -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: 20px;
-    padding: 28px 18px;
+    padding: 32px 18px;
     text-align: center;
-    margin-bottom: 14px;
+    box-shadow: var(--shadow-md);
 }
 .timer-label {
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     color: var(--text-tertiary);
 }
 .timer-task {
     font-size: 16px;
-    font-weight: 600;
+    font-weight: 700;
     margin: 6px 0;
     letter-spacing: -0.2px;
 }
 .timer-display {
-    font-size: 54px;
-    font-weight: 700;
+    font-size: 56px;
+    font-weight: 800;
     font-variant-numeric: tabular-nums;
     letter-spacing: -2px;
-    margin: 18px 0 14px;
+    margin: 20px 0 14px;
     color: var(--text);
+    line-height: 1;
 }
 .timer-track {
     background: rgba(255,255,255,0.06);
     border-radius: 4px;
-    height: 3px;
-    margin: 0 auto 12px;
-    max-width: 320px;
+    height: 4px;
+    margin: 0 auto 14px;
+    max-width: 280px;
     overflow: hidden;
 }
 .timer-fill {
@@ -69,6 +80,7 @@
     height: 100%;
     border-radius: 4px;
     transition: width 1s linear;
+    box-shadow: 0 0 8px rgba(48,255,133,0.28);
 }
 .timer-sub {
     font-size: 12px;
@@ -82,20 +94,21 @@
     margin-top: 24px;
 }
 .btn-finish {
-    background: var(--green);
-    color: #fff;
-    padding: 10px 28px;
+    background: var(--accent);
+    color: #000;
+    padding: 12px 28px;
     border-radius: var(--radius-xs);
     border: none;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 14px;
+    font-weight: 700;
     cursor: pointer;
     font-family: inherit;
-    transition: all 0.2s;
+    transition: all 0.25s;
+    box-shadow: var(--glow-green);
 }
-.btn-finish:hover { background: #3bda65; }
+.btn-finish:hover { box-shadow: 0 0 28px rgba(48,255,133,0.32); }
 .btn-abort {
-    background: rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.03);
     color: var(--text-secondary);
     padding: 10px 20px;
     border-radius: var(--radius-xs);
@@ -106,61 +119,62 @@
     font-family: inherit;
     transition: all 0.2s;
 }
-.btn-abort:hover { background: rgba(255,255,255,0.08); color: var(--text); }
+.btn-abort:hover { background: rgba(149,255,69,0.05); color: var(--text); }
 .notes-field {
     width: 100%;
-    max-width: 360px;
-    margin: 16px auto 0;
+    max-width: 320px;
+    margin: 18px auto 0;
     display: block;
-    padding: 9px 14px;
+    padding: 10px 14px;
     background: rgba(255,255,255,0.04);
     border: 1px solid var(--border);
     border-radius: 8px;
     color: var(--text);
-    font-size: 13px;
+    font-size: 14px;
     font-family: inherit;
 }
-.notes-field:focus { outline: none; border-color: var(--green); }
+.notes-field:focus { outline: none; border-color: var(--green); box-shadow: 0 0 0 3px var(--green-glow); }
 .notes-field::placeholder { color: var(--text-tertiary); }
 
-/* ── Start ─────────────────────── */
+/* ── Start Card ────────────────── */
 .start-card {
     background: var(--surface);
-    backdrop-filter: blur(40px) saturate(150%);
-    -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 20px 16px;
-    margin-bottom: 14px;
+    box-shadow: var(--shadow-sm);
 }
 .durations {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 8px;
-    margin: 14px 0 20px;
+    margin: 16px 0 20px;
 }
 .dur {
-    background: rgba(255,255,255,0.03);
+    background: rgba(255,255,255,0.015);
     border: 1.5px solid var(--border);
     border-radius: var(--radius);
-    padding: 18px 10px;
+    padding: 18px 8px;
     text-align: center;
     cursor: pointer;
     transition: all 0.2s;
 }
 .dur:hover { border-color: var(--border-hover); }
-.dur.picked { border-color: var(--accent); background: rgba(10,132,255,0.05); }
+.dur.picked {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+}
 .dur input { display: none; }
-.dur-val { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+.dur-val { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
 .dur-lbl { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; }
 .dur-xp { font-size: 11px; color: var(--accent); font-weight: 600; margin-top: 6px; }
 
-/* ── History ───────────────────── */
+/* ── Session History ───────────── */
 .session-row {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-start;
-    gap: 10px;
+    gap: 8px;
     padding: 12px 0;
     border-bottom: 1px solid var(--border);
 }
@@ -169,51 +183,52 @@
     width: 6px; height: 6px;
     border-radius: 50%;
     background: var(--green);
-    margin-right: 12px;
     flex-shrink: 0;
+    margin-top: 6px;
 }
-.s-body { flex: 1 1 180px; }
+.s-body { flex: 1 1 160px; min-width: 0; }
 .s-name { font-size: 13px; font-weight: 600; }
-.s-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 1px; }
-.s-xp { font-size: 12px; color: var(--accent); font-weight: 600; width: 100%; }
+.s-meta { font-size: 11px; color: var(--text-tertiary); margin-top: 2px; line-height: 1.4; }
+.s-xp {
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+    flex: 0 0 auto;
+}
 
+/* ── Tablet+ ───────────────────── */
 @media (min-width: 720px) {
     .timer-card {
-        padding: 44px 32px;
-        margin-bottom: 12px;
+        padding: 48px 32px;
     }
     .timer-display {
         font-size: 72px;
-        margin: 20px 0 16px;
+        margin: 24px 0 18px;
     }
     .timer-actions { flex-direction: row; }
-    .start-card {
-        padding: 28px 24px;
-        margin-bottom: 12px;
-    }
+    .start-card { padding: 28px 24px; }
     .durations { gap: 10px; }
-    .dur {
-        padding: 22px 12px;
-    }
+    .dur { padding: 24px 12px; }
     .dur-val { font-size: 32px; }
     .session-row {
         flex-wrap: nowrap;
         align-items: center;
-        gap: 0;
+        gap: 12px;
     }
     .s-body { flex: 1; }
-    .s-xp { width: auto; }
 }
 
+/* ── Desktop 2-col ─────────────── */
 @media (min-width: 1040px) {
     .dw-layout {
-        grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.95fr);
-        align-items: start;
-        gap: 16px;
+        flex-direction: row;
+        gap: 18px;
     }
+    .dw-main { flex: 1.35; min-width: 0; }
     .dw-side {
+        flex: 0 0 320px;
         position: sticky;
-        top: 92px;
+        top: 80px;
     }
 }
 {% endblock %}
@@ -224,7 +239,7 @@
         <h1>Deep Work</h1>
         <p class="muted mt-xs">Focused sessions for important tasks.</p>
     </div>
-    <a href="/" class="btn btn-outline">Dashboard</a>
+    <a href="/" class="btn btn-outline btn-sm">Dashboard</a>
 </div>
 
 <div class="dw-stats">
@@ -251,13 +266,16 @@
             <div class="timer-sub" id="remaining"></div>
 
             <form method="post" action="/deepwork/{{ active_session.id }}/complete" id="cf">
+                {{ csrf_input(request) }}
                 <input type="text" name="notes" class="notes-field" placeholder="What did you accomplish? (optional)">
                 <div class="timer-actions">
-                    <button type="submit" class="btn-finish">Complete</button>
+                    <button type="submit" class="btn-finish">Complete Session</button>
                     <button type="button" class="btn-abort" onclick="document.getElementById('xf').submit()">Cancel</button>
                 </div>
             </form>
-            <form method="post" action="/deepwork/{{ active_session.id }}/cancel" id="xf" style="display:none;"></form>
+            <form method="post" action="/deepwork/{{ active_session.id }}/cancel" id="xf" style="display:none;">
+                {{ csrf_input(request) }}
+            </form>
         </div>
 
         <script>
@@ -273,8 +291,8 @@
                 document.getElementById('fill').style.width=Math.min(100,e/t*100)+'%';
                 if(r<=0){
                     document.getElementById('timer').textContent='00:00';
-                    document.getElementById('remaining').textContent='Session complete';
-                    document.getElementById('tc').style.borderColor='rgba(48,209,88,0.25)';
+                    document.getElementById('remaining').textContent='Session complete!';
+                    document.getElementById('tc').style.borderColor='rgba(48,255,133,0.25)';
                 }else{
                     document.getElementById('remaining').textContent=m+'m '+sc+'s of '+p+'min';
                 }
@@ -289,12 +307,13 @@
             <p class="muted">Pick a task, choose duration, enter the zone.</p>
 
             <form method="post" action="/deepwork/start">
+                {{ csrf_input(request) }}
                 <div class="form-group" style="margin-top:16px;">
                     <label for="task_id">Focus task</label>
                     <select id="task_id" name="task_id">
                         <option value="0">General Focus (no specific task)</option>
                         {% for task in tasks %}
-                        <option value="{{ task.id }}">[P{{ task.priority }}] {{ task.title }}{% if task.deadline %} — due {{ task.deadline.strftime('%b %d') }}{% endif %}</option>
+                        <option value="{{ task.id }}">[P{{ task.priority }}] {{ task.title }}{% if task.deadline %} &mdash; due {{ task.deadline.strftime('%b %d') }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </div>

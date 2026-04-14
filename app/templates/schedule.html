@@ -1,17 +1,13 @@
 {% extends "base.html" %}
 
 {% block extra_style %}
+/* ── Schedule Header ─────────── */
 .schedule-header {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
-    margin-bottom: 18px;
-}
-.schedule-layout {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 18px;
+    gap: 4px;
+    margin-bottom: 20px;
 }
 .schedule-header h1 { margin: 0; }
 .today-label {
@@ -20,72 +16,73 @@
     font-weight: 500;
 }
 
-/* ── Week Strip ─────────────── */
+/* ── Layout ───────────────────── */
+.schedule-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+/* ── Week Strip ───────────────── */
 .week-strip {
     display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(78px, 1fr);
+    grid-template-columns: repeat(7, 1fr);
     gap: 6px;
-    margin-bottom: 20px;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scrollbar-width: none;
+    margin-bottom: 18px;
 }
-.week-strip::-webkit-scrollbar { display: none; }
 .week-day {
     background: var(--surface);
-    backdrop-filter: blur(40px) saturate(150%);
-    -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 12px 8px;
+    padding: 10px 4px;
     text-align: center;
     transition: all 0.2s;
     position: relative;
 }
 .week-day.is-today {
     border-color: var(--accent);
-    background: rgba(10,132,255,0.08);
+    background: var(--accent-glow);
+    box-shadow: 0 0 16px rgba(149,255,69,0.12);
 }
 .week-day-name {
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 600;
     color: var(--text-tertiary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
 .week-day-num {
-    font-size: 20px;
-    font-weight: 700;
-    margin-top: 4px;
+    font-size: 18px;
+    font-weight: 800;
+    margin-top: 2px;
     letter-spacing: -0.5px;
 }
-.week-day.is-today .week-day-num { color: var(--accent); }
+.week-day.is-today .week-day-num { color: var(--accent-bright); }
 .week-day-dots {
     display: flex;
     justify-content: center;
-    gap: 3px;
-    margin-top: 6px;
-    min-height: 6px;
+    gap: 2px;
+    margin-top: 4px;
+    min-height: 5px;
 }
 .event-dot {
-    width: 5px;
-    height: 5px;
+    width: 4px;
+    height: 4px;
     border-radius: 50%;
 }
-.dot-meeting { background: var(--red); }
+.dot-meeting { background: var(--accent-bright); }
 .dot-work { background: var(--accent); }
 .dot-personal { background: var(--green); }
 .dot-break { background: var(--orange); }
 .dot-general { background: var(--text-tertiary); }
 
-/* ── Timeline ──────────────── */
+/* ── Timeline ─────────────────── */
 .timeline-section {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 .timeline-title {
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--text-secondary);
     margin-bottom: 12px;
     display: flex;
@@ -93,34 +90,38 @@
     gap: 8px;
 }
 .timeline-title-dot {
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
     border-radius: 50%;
     background: var(--accent);
+    box-shadow: 0 0 8px rgba(149,255,69,0.35);
 }
 
+/* ── Event Cards ──────────────── */
 .event-card {
     background: var(--surface);
-    backdrop-filter: blur(40px) saturate(150%);
-    -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 14px 14px;
+    padding: 14px;
     margin-bottom: 8px;
     display: flex;
     flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
+    gap: 10px;
     transition: all 0.2s;
+    box-shadow: var(--shadow-sm);
 }
 .event-card:hover {
     border-color: var(--border-hover);
     background: var(--surface-hover);
 }
+.event-card-top {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
 .event-time-block {
     flex-shrink: 0;
-    text-align: left;
-    min-width: auto;
+    min-width: 48px;
 }
 .event-time-start {
     font-size: 15px;
@@ -133,15 +134,15 @@
     margin-top: 1px;
 }
 .event-bar {
-    width: 100%;
-    height: 3px;
+    width: 3px;
+    height: 32px;
     border-radius: 2px;
     flex-shrink: 0;
 }
-.bar-meeting { background: var(--red); }
-.bar-work { background: var(--accent); }
-.bar-personal { background: var(--green); }
-.bar-break { background: var(--orange); }
+.bar-meeting { background: var(--accent-bright); box-shadow: 0 0 6px rgba(149,255,69,0.28); }
+.bar-work { background: var(--accent); box-shadow: 0 0 6px rgba(149,255,69,0.35); }
+.bar-personal { background: var(--green); box-shadow: 0 0 6px rgba(48,255,133,0.35); }
+.bar-break { background: var(--orange); box-shadow: 0 0 6px rgba(255,184,0,0.4); }
 .bar-general { background: var(--text-tertiary); }
 
 .event-info { flex: 1; min-width: 0; }
@@ -154,7 +155,7 @@
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: 6px;
     margin-top: 3px;
 }
 .event-category {
@@ -164,29 +165,25 @@
     border-radius: 6px;
     text-transform: capitalize;
 }
-.cat-meeting { background: rgba(255,69,58,0.12); color: var(--red); }
-.cat-work { background: rgba(10,132,255,0.12); color: var(--accent); }
-.cat-personal { background: rgba(48,209,88,0.12); color: var(--green); }
-.cat-break { background: rgba(255,159,10,0.12); color: var(--orange); }
+.cat-meeting { background: var(--accent-glow); color: var(--accent-bright); }
+.cat-work { background: var(--cyan-glow); color: var(--cyan); }
+.cat-personal { background: var(--green-glow); color: var(--green); }
+.cat-break { background: var(--orange-glow); color: var(--orange); }
 .cat-general { background: rgba(255,255,255,0.06); color: var(--text-secondary); }
 
 .event-desc {
     font-size: 12px;
     color: var(--text-tertiary);
-    margin-top: 2px;
 }
 .event-actions {
-    flex-shrink: 0;
     display: flex;
     gap: 6px;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    width: 100%;
+    justify-content: flex-end;
 }
 
 .empty-timeline {
     text-align: center;
-    padding: 40px 0;
+    padding: 40px 16px;
     color: var(--text-tertiary);
     font-size: 13px;
 }
@@ -196,15 +193,13 @@
     opacity: 0.4;
 }
 
-/* ── Add Event Form ────────── */
+/* ── Add Event Form ───────────── */
 .add-event-card {
     background: var(--surface);
-    backdrop-filter: blur(40px) saturate(150%);
-    -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 16px;
-    margin-bottom: 20px;
+    box-shadow: var(--shadow-sm);
 }
 .form-row {
     display: grid;
@@ -218,128 +213,118 @@
 }
 .form-actions {
     display: flex;
-    justify-content: flex-start;
     gap: 8px;
     margin-top: 16px;
 }
 .form-actions .btn { width: 100%; }
 
-/* ── Category Picker ───────── */
+/* ── Category Picker ──────────── */
 .cat-picker {
     display: flex;
     gap: 6px;
     flex-wrap: wrap;
 }
-.cat-option {
-    display: none;
-}
+.cat-option { display: none; }
 .cat-label {
-    padding: 6px 14px;
+    padding: 7px 14px;
     border-radius: 8px;
     font-size: 12px;
     font-weight: 600;
     cursor: pointer;
     border: 1px solid var(--border);
-    background: rgba(255,255,255,0.03);
+    background: rgba(255,255,255,0.02);
     color: var(--text-secondary);
     transition: all 0.2s;
 }
 .cat-option:checked + .cat-label {
     border-color: var(--accent);
-    background: rgba(10,132,255,0.12);
-    color: var(--accent);
+    background: var(--accent-glow);
+    color: var(--accent-bright);
+    box-shadow: 0 0 10px rgba(149,255,69,0.10);
 }
 
-/* ── Pending Info ──────────── */
+/* ── Info & Focus ─────────────── */
 .schedule-info {
     background: var(--surface);
-    backdrop-filter: blur(40px) saturate(150%);
-    -webkit-backdrop-filter: blur(40px) saturate(150%);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 12px 16px;
-    margin-bottom: 20px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
     display: flex;
     align-items: center;
     gap: 10px;
     font-size: 12px;
     color: var(--text-secondary);
+    line-height: 1.5;
 }
 .info-dot {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--purple);
+    background: var(--accent);
     flex-shrink: 0;
 }
 .focus-hint {
-    background: rgba(10,132,255,0.08);
-    border: 1px solid rgba(10,132,255,0.16);
+    background: rgba(149,255,69,0.08);
+    border: 1px solid rgba(149,255,69,0.18);
     border-radius: var(--radius-sm);
     padding: 12px 14px;
     margin-bottom: 14px;
+    box-shadow: 0 0 16px rgba(149,255,69,0.06);
 }
 .focus-hint-title {
     font-size: 12px;
-    font-weight: 600;
-    color: var(--accent);
+    font-weight: 700;
+    color: var(--accent-bright);
 }
 .focus-hint-copy {
     font-size: 12px;
     color: var(--text-secondary);
-    margin-top: 4px;
+    margin-top: 3px;
 }
 
+/* ── Tablet+ ──────────────────── */
 @media (min-width: 720px) {
     .schedule-header {
         flex-direction: row;
         justify-content: space-between;
         align-items: center;
-        gap: 16px;
-        margin-bottom: 20px;
     }
-    .week-strip {
-        grid-auto-flow: initial;
-        grid-template-columns: repeat(7, minmax(0, 1fr));
-        overflow: visible;
-        padding-bottom: 0;
-    }
+    .week-day { padding: 12px 8px; }
+    .week-day-name { font-size: 10px; }
+    .week-day-num { font-size: 22px; }
     .event-card {
-        padding: 14px 16px;
         flex-direction: row;
         align-items: center;
+        padding: 14px 16px;
         gap: 14px;
     }
-    .event-time-block {
-        text-align: center;
-        min-width: 56px;
-    }
-    .event-bar {
-        width: 3px;
-        height: 36px;
+    .event-card-top {
+        flex: 1;
+        min-width: 0;
     }
     .event-actions {
-        justify-content: flex-end;
-        width: auto;
+        flex-shrink: 0;
     }
     .add-event-card { padding: 20px; }
-    .form-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .form-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .form-row { grid-template-columns: repeat(2, 1fr); }
+    .form-row-3 { grid-template-columns: repeat(3, 1fr); }
     .form-actions { justify-content: flex-end; }
     .form-actions .btn { width: auto; }
 }
 
+/* ── Desktop 2-col ────────────── */
 @media (min-width: 960px) {
     .schedule-layout {
-        grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.95fr);
-        align-items: start;
-        gap: 18px;
+        flex-direction: row;
+        gap: 20px;
     }
+    .schedule-main { flex: 1; min-width: 0; }
     .schedule-side {
+        flex: 0 0 340px;
         position: sticky;
-        top: 92px;
+        top: 80px;
     }
-    .week-day { padding: 12px 8px; }
 }
 {% endblock %}
 
@@ -370,7 +355,7 @@
 {% if pending_count > 0 %}
 <div class="schedule-info fade-in d1">
     <div class="info-dot"></div>
-    <span>You have {{ pending_count }} pending task{{ 's' if pending_count != 1 }} &mdash; the AI considers your schedule when setting task deadlines.</span>
+    <span>{{ pending_count }} pending task{{ 's' if pending_count != 1 }} &mdash; AI factors your schedule into deadlines.</span>
 </div>
 {% endif %}
 
@@ -386,28 +371,32 @@
             {% if today_events %}
                 {% for event in today_events %}
                 <div class="event-card">
-                    <div class="event-time-block">
-                        <div class="event-time-start">{{ event.start_time }}</div>
-                        <div class="event-time-end">{{ event.end_time }}</div>
-                    </div>
-                    <div class="event-bar bar-{{ event.category }}"></div>
-                    <div class="event-info">
-                        <div class="event-name">{{ event.title }}</div>
-                        <div class="event-meta">
-                            <span class="event-category cat-{{ event.category }}">{{ event.category }}</span>
-                            {% if event.description %}
-                            <span class="event-desc">{{ event.description[:50] }}{% if event.description|length > 50 %}...{% endif %}</span>
-                            {% endif %}
+                    <div class="event-card-top">
+                        <div class="event-time-block">
+                            <div class="event-time-start">{{ event.start_time }}</div>
+                            <div class="event-time-end">{{ event.end_time }}</div>
+                        </div>
+                        <div class="event-bar bar-{{ event.category }}"></div>
+                        <div class="event-info">
+                            <div class="event-name">{{ event.title }}</div>
+                            <div class="event-meta">
+                                <span class="event-category cat-{{ event.category }}">{{ event.category }}</span>
+                                {% if event.description %}
+                                <span class="event-desc">{{ event.description[:50] }}{% if event.description|length > 50 %}...{% endif %}</span>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
                     <div class="event-actions">
                         {% if event.repeat != 'none' or event.parent_event_id %}
                         <form method="post" action="/events/{{ event.id }}/delete-series" style="display:inline;">
+                            {{ csrf_input(request) }}
                             <button type="submit" class="btn btn-outline btn-sm">Series</button>
                         </form>
                         {% endif %}
                         <form method="post" action="/events/{{ event.id }}/delete" style="display:inline;">
-                            <button type="submit" class="btn btn-danger btn-sm">Del</button>
+                            {{ csrf_input(request) }}
+                            <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                         </form>
                     </div>
                 </div>
@@ -426,36 +415,47 @@
         <div class="focus-hint fade-in d2">
             <div class="focus-hint-title">Next Free Focus Slot</div>
             <div class="focus-hint-copy">
-                {{ next_focus_slot.date.strftime('%a, %b %d') }} · {{ next_focus_slot.start_time.strftime('%I:%M %p').lstrip('0') }} - {{ next_focus_slot.end_time.strftime('%I:%M %p').lstrip('0') }}
+                {{ next_focus_slot.date.strftime('%a, %b %d') }} &middot; {{ next_focus_slot.start_time.strftime('%I:%M %p').lstrip('0') }} - {{ next_focus_slot.end_time.strftime('%I:%M %p').lstrip('0') }}
             </div>
         </div>
         {% endif %}
+
+        <div class="add-event-card fade-in d2" style="margin-bottom: 14px;">
+            <h2>Reminders</h2>
+            <p class="muted" style="margin-bottom: 12px;">Run the reminder scan now to test reminder delivery.</p>
+            <form method="post" action="/notifications/run">
+                {{ csrf_input(request) }}
+                <button type="submit" class="btn btn-outline" style="width: 100%;">Run Reminder Check Now</button>
+            </form>
+        </div>
+
         <!-- Add Event Form -->
         <div class="add-event-card fade-in d3">
             <h2>Add Event</h2>
             <form method="post" action="/events/add">
+                {{ csrf_input(request) }}
                 <div class="form-group">
                     <label>Event Title</label>
                     <input type="text" name="title" placeholder="Team standup, Lunch, Gym..." required>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group">
+                <div class="form-row" style="margin-bottom: 12px;">
+                    <div class="form-group" style="margin-bottom:0;">
                         <label>Date</label>
                         <input type="date" name="event_date" value="{{ today.strftime('%Y-%m-%d') }}" required>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" style="margin-bottom:0;">
                         <label>Description (optional)</label>
                         <input type="text" name="description" placeholder="Brief note...">
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group">
+                <div class="form-row" style="margin-bottom: 12px;">
+                    <div class="form-group" style="margin-bottom:0;">
                         <label>Start Time</label>
                         <input type="time" name="start_time" value="09:00" required>
                     </div>
-                    <div class="form-group">
+                    <div class="form-group" style="margin-bottom:0;">
                         <label>End Time</label>
                         <input type="time" name="end_time" value="10:00" required>
                     </div>
@@ -466,23 +466,19 @@
                     <div class="cat-picker">
                         <input type="radio" name="category" value="meeting" id="cat-meeting" class="cat-option">
                         <label for="cat-meeting" class="cat-label">Meeting</label>
-
                         <input type="radio" name="category" value="work" id="cat-work" class="cat-option" checked>
                         <label for="cat-work" class="cat-label">Work</label>
-
                         <input type="radio" name="category" value="personal" id="cat-personal" class="cat-option">
                         <label for="cat-personal" class="cat-label">Personal</label>
-
                         <input type="radio" name="category" value="break" id="cat-break" class="cat-option">
                         <label for="cat-break" class="cat-label">Break</label>
-
                         <input type="radio" name="category" value="general" id="cat-general" class="cat-option">
                         <label for="cat-general" class="cat-label">General</label>
                     </div>
                 </div>
 
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form-group" style="margin-bottom:0;">
                         <label>Repeat</label>
                         <select name="repeat" id="repeat-select">
                             <option value="none">No repeat</option>
@@ -491,7 +487,7 @@
                             <option value="weekly">Weekly</option>
                         </select>
                     </div>
-                    <div class="form-group" id="repeat-until-group" style="display:none;">
+                    <div class="form-group" id="repeat-until-group" style="display:none; margin-bottom:0;">
                         <label>Repeat Until</label>
                         <input type="date" name="repeat_until" id="repeat-until">
                     </div>

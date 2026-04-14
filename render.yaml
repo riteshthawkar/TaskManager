@@ -1,9 +1,3 @@
-databases:
-  - name: taskmanager-db
-    plan: free
-    databaseName: taskmanager
-    user: taskmanager
-
 services:
   - type: web
     name: taskmanager
@@ -14,19 +8,29 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.11
+      - key: APP_ENV
+        value: production
+      - key: ENABLE_SCHEDULER
+        value: "true"
+      - key: NOTIFICATION_CHECK_MINUTES
+        value: "10"
+      - key: APP_USERNAME
+        value: admin
+      - key: APP_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: SESSION_HTTPS_ONLY
+        value: "true"
       - key: DATABASE_URL
-        fromDatabase:
-          name: taskmanager-db
-          property: connectionString
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_USER
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: RESEND_API_KEY
         sync: false
-      - key: SMTP_PASS
+      - key: EMAIL_FROM
         sync: false
       - key: NOTIFY_EMAIL
         sync: false

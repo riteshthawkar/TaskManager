@@ -1,80 +1,244 @@
 from __future__ import annotations
 import os
+import secrets
+import logging
 from pathlib import Path
 from datetime import datetime, date, time, timedelta
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request, Depends, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.background import BackgroundScheduler
 from starlette.middleware.sessions import SessionMiddleware
+from markupsafe import Markup, escape
 
-from app.database import get_db, ensure_schema_compatibility
+from app.database import get_db, ensure_schema_compatibility, SessionLocal, engine
 from app.models import Task, UserStats, DeepWorkSession, Event
 from app.llm import analyze_task, followup_analyze, generate_motivation, suggest_deep_work
-from app.notifications import check_and_send_notifications
+from app.notifications import check_and_send_notifications, email_config_issues, current_email_provider
 
 BASE_DIR = Path(__file__).resolve().parent
+logger = logging.getLogger("taskmanager")
+
+
+def env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return max(1, int(value))
+    except ValueError:
+        logger.warning("Invalid integer for %s=%r. Falling back to %s.", name, value, default)
+        return default
+
+
+APP_ENV = os.getenv("APP_ENV", "development").strip().lower()
+IS_PRODUCTION = APP_ENV == "production"
+APP_USERNAME = os.getenv("APP_USERNAME", "admin").strip() or "admin"
+APP_PASSWORD = os.getenv("APP_PASSWORD", "")
+SESSION_SECRET = os.getenv("SESSION_SECRET")
+SESSION_SECRET_VALUE = SESSION_SECRET or secrets.token_urlsafe(32)
+_session_https_override = os.getenv("SESSION_HTTPS_ONLY")
+SESSION_HTTPS_ONLY = env_flag("SESSION_HTTPS_ONLY", IS_PRODUCTION) if _session_https_override is not None else IS_PRODUCTION
+ENABLE_SCHEDULER = env_flag("ENABLE_SCHEDULER", not IS_PRODUCTION)
+NOTIFICATION_CHECK_MINUTES = env_int("NOTIFICATION_CHECK_MINUTES", 10)
 
 # Background scheduler for notifications
 scheduler = BackgroundScheduler()
-scheduler.add_job(check_and_send_notifications, "interval", minutes=30, id="notification_check")
+scheduler.add_job(
+    check_and_send_notifications,
+    "interval",
+    minutes=NOTIFICATION_CHECK_MINUTES,
+    id="notification_check",
+    max_instances=1,
+    coalesce=True,
+    misfire_grace_time=300,
+)
+
+
+def validate_configuration() -> None:
+    global APP_PASSWORD
+    if not APP_PASSWORD and not IS_PRODUCTION:
+        APP_PASSWORD = "dev-password"
+
+    missing = []
+    if IS_PRODUCTION and not SESSION_SECRET:
+        missing.append("SESSION_SECRET")
+    if IS_PRODUCTION and not APP_PASSWORD:
+        missing.append("APP_PASSWORD")
+    if missing:
+        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+
+    if not IS_PRODUCTION:
+        if not SESSION_SECRET:
+            logger.warning("SESSION_SECRET is not set; using an ephemeral development secret.")
+        if os.getenv("APP_PASSWORD") in (None, ""):
+            logger.warning("APP_PASSWORD is not set; using development default password: dev-password")
+        if SESSION_HTTPS_ONLY:
+            logger.warning("SESSION_HTTPS_ONLY=true in development. HTTP local logins may fail because secure cookies are not sent.")
+
+
+def ensure_user_stats_row() -> None:
+    db = SessionLocal()
+    try:
+        if not db.query(UserStats).first():
+            db.add(UserStats(total_xp=0, current_streak=0, longest_streak=0, tasks_completed=0))
+            db.commit()
+        logger.info("UserStats ready")
+    finally:
+        db.close()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables on startup
     try:
+        validate_configuration()
         applied_migrations = ensure_schema_compatibility()
-        print("[STARTUP] Tables ready")
+        logger.info("Tables ready")
         if applied_migrations:
-            print(f"[STARTUP] Applied schema updates: {', '.join(applied_migrations)}")
-    except Exception as e:
-        print(f"[STARTUP ERROR] Failed to create tables: {e}")
-
-    # Start scheduler
-    try:
-        scheduler.start()
-        print("[STARTUP] Scheduler started")
-    except Exception as e:
-        print(f"[STARTUP ERROR] Scheduler failed: {e}")
-
-    # Ensure UserStats row exists
-    from app.database import SessionLocal
-    try:
-        db = SessionLocal()
-        if not db.query(UserStats).first():
-            db.add(UserStats(total_xp=0, current_streak=0, longest_streak=0, tasks_completed=0))
-            db.commit()
-        db.close()
-        print("[STARTUP] UserStats ready")
-    except Exception as e:
-        print(f"[STARTUP ERROR] UserStats init failed: {e}")
+            logger.info("Applied schema updates: %s", ", ".join(applied_migrations))
+        ensure_user_stats_row()
+        logger.info("Email provider: %s", current_email_provider())
+        email_issues = email_config_issues()
+        if email_issues:
+            logger.warning("Email reminders are not fully configured: %s", ", ".join(email_issues))
+        if ENABLE_SCHEDULER:
+            scheduler.start()
+            logger.info("Scheduler started (notifications every %s minutes)", NOTIFICATION_CHECK_MINUTES)
+        else:
+            logger.info("Scheduler disabled; run notifications from a dedicated worker or cron service.")
+    except Exception:
+        logger.exception("Startup failed")
+        raise
 
     yield
 
-    try:
-        scheduler.shutdown()
-    except Exception:
-        pass
+    if ENABLE_SCHEDULER and scheduler.running:
+        try:
+            scheduler.shutdown()
+        except Exception:
+            logger.exception("Scheduler shutdown failed")
 
 
 app = FastAPI(title="TaskManager", lifespan=lifespan)
 app.add_middleware(
     SessionMiddleware,
-    secret_key=os.getenv("SESSION_SECRET", "taskmanager-dev-session-secret"),
+    secret_key=SESSION_SECRET_VALUE,
     same_site="lax",
+    https_only=SESSION_HTTPS_ONLY,
+    session_cookie="taskmanager_session",
+    max_age=60 * 60 * 12,
 )
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
+def is_safe_redirect_target(target: str | None) -> bool:
+    return bool(target) and target.startswith("/") and not target.startswith("//")
+
+
+def login_redirect_url(request: Request) -> str:
+    next_path = request.url.path
+    if request.url.query:
+        next_path = f"{next_path}?{request.url.query}"
+    return f"/login?next={quote(next_path, safe='/?=&')}"
+
+
+def get_csrf_token(request: Request) -> str:
+    token = request.session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.session["csrf_token"] = token
+    return token
+
+
+def csrf_input(request: Request) -> Markup:
+    return Markup(f'<input type="hidden" name="_csrf" value="{escape(get_csrf_token(request))}">')
+
+
+templates.env.globals["csrf_input"] = csrf_input
+
+
+def require_authenticated(request: Request) -> None:
+    if request.session.get("authenticated"):
+        return
+    raise HTTPException(
+        status_code=303,
+        detail="Authentication required",
+        headers={"Location": login_redirect_url(request)},
+    )
+
+
+async def validate_csrf(request: Request) -> None:
+    if request.url.path != "/login" and not request.session.get("authenticated"):
+        raise HTTPException(
+            status_code=303,
+            detail="Authentication required",
+            headers={"Location": login_redirect_url(request)},
+        )
+    if request.url.path == "/login":
+        return
+
+    expected = request.session.get("csrf_token")
+    provided = request.headers.get("x-csrf-token")
+    if not provided:
+        form = await request.form()
+        provided = form.get("_csrf")
+
+    if not expected or not provided or not secrets.compare_digest(str(provided).strip(), str(expected).strip()):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if IS_PRODUCTION:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "script-src 'self' 'unsafe-inline'; "
+        "connect-src 'self'; "
+        "manifest-src 'self';"
+    )
+    return response
+
+
+@app.get("/health/live")
+async def live_health():
+    return {"status": "ok"}
+
+
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "ok"}
+    except Exception:
+        logger.exception("Readiness check failed")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "error", "database": "unavailable"},
+        )
 
 
 @app.head("/")
@@ -111,7 +275,14 @@ def parse_date_input(value: str) -> datetime | None:
 
 
 def template_context(request: Request, **context) -> dict:
-    base = {"request": request, "alerts": request.session.pop("alerts", [])}
+    base = {
+        "request": request,
+        "alerts": request.session.pop("alerts", []),
+        "authenticated": bool(request.session.get("authenticated")),
+        "app_username": APP_USERNAME,
+        "csrf_token": get_csrf_token(request),
+        "hide_nav": False,
+    }
     base.update(context)
     return base
 
@@ -373,7 +544,61 @@ def update_streak(stats: UserStats) -> None:
 
 # ── Routes ───────────────────────────────────────────────────────
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, next: str = "/"):
+    if request.session.get("authenticated"):
+        destination = next if is_safe_redirect_target(next) else "/"
+        return RedirectResponse(url=destination, status_code=303)
+    return templates.TemplateResponse("login.html", template_context(
+        request,
+        next_path=next if is_safe_redirect_target(next) else "/",
+        hide_nav=True,
+    ))
+
+
+@app.post("/login")
+async def login_submit(
+    request: Request,
+    username: str = Form(""),
+    password: str = Form(""),
+    next_path: str = Form("/"),
+    _: None = Depends(validate_csrf),
+):
+    safe_next = next_path if is_safe_redirect_target(next_path) else "/"
+    if secrets.compare_digest(username.strip(), APP_USERNAME) and secrets.compare_digest(password, APP_PASSWORD):
+        request.session.clear()
+        request.session["authenticated"] = True
+        request.session["username"] = APP_USERNAME
+        request.session["csrf_token"] = secrets.token_urlsafe(32)
+        push_alert(request, "success", "Signed in successfully.")
+        return RedirectResponse(url=safe_next, status_code=303)
+
+    push_alert(request, "error", "Invalid username or password.")
+    return RedirectResponse(url=f"/login?next={quote(safe_next, safe='/?=&')}", status_code=303)
+
+
+@app.post("/logout")
+async def logout(request: Request, _: None = Depends(validate_csrf)):
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
+
+
+@app.post("/notifications/run", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def run_notifications_now(request: Request):
+    summary = check_and_send_notifications()
+    push_alert(
+        request,
+        "info",
+        "Reminder scan complete: "
+        f"{summary['tasks_scanned']} scanned, "
+        f"{summary['sent_24h']} sent (24h), "
+        f"{summary['sent_2h']} sent (2h), "
+        f"{summary['sent_overdue']} sent (overdue).",
+    )
+    return RedirectResponse(url="/schedule", status_code=303)
+
+
+@app.get("/", response_class=HTMLResponse, dependencies=[Depends(require_authenticated)])
 async def dashboard(request: Request, db: Session = Depends(get_db)):
     stats = get_stats(db)
     tasks = db.query(Task).filter(Task.status != "completed").order_by(Task.priority.desc(), Task.deadline.asc()).all()
@@ -447,7 +672,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     ))
 
 
-@app.get("/tasks/add", response_class=HTMLResponse)
+@app.get("/tasks/add", response_class=HTMLResponse, dependencies=[Depends(require_authenticated)])
 async def add_task_page(request: Request):
     return templates.TemplateResponse("add_task.html", template_context(
         request,
@@ -455,7 +680,7 @@ async def add_task_page(request: Request):
     ))
 
 
-@app.post("/tasks/analyze", response_class=HTMLResponse)
+@app.post("/tasks/analyze", response_class=HTMLResponse, dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def analyze_task_route(
     request: Request,
     title: str = Form(...),
@@ -482,7 +707,7 @@ async def analyze_task_route(
     ))
 
 
-@app.post("/tasks/followup", response_class=HTMLResponse)
+@app.post("/tasks/followup", response_class=HTMLResponse, dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def followup_task_route(
     request: Request,
     db: Session = Depends(get_db),
@@ -523,7 +748,7 @@ async def followup_task_route(
     ))
 
 
-@app.post("/tasks/confirm")
+@app.post("/tasks/confirm", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def confirm_task(
     request: Request,
     title: str = Form(...),
@@ -548,7 +773,7 @@ async def confirm_task(
     return RedirectResponse(url="/", status_code=303)
 
 
-@app.post("/tasks/{task_id}/complete")
+@app.post("/tasks/{task_id}/complete", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def complete_task(task_id: int, request: Request, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
@@ -577,7 +802,7 @@ async def complete_task(task_id: int, request: Request, db: Session = Depends(ge
     return RedirectResponse(url="/", status_code=303)
 
 
-@app.post("/tasks/{task_id}/delete")
+@app.post("/tasks/{task_id}/delete", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def delete_task(task_id: int, request: Request, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if task:
@@ -588,7 +813,7 @@ async def delete_task(task_id: int, request: Request, db: Session = Depends(get_
     return RedirectResponse(url="/", status_code=303)
 
 
-@app.post("/tasks/{task_id}/start")
+@app.post("/tasks/{task_id}/start", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def start_task(task_id: int, request: Request, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if task and task.status != "completed":
@@ -600,7 +825,7 @@ async def start_task(task_id: int, request: Request, db: Session = Depends(get_d
     return RedirectResponse(url="/", status_code=303)
 
 
-@app.post("/tasks/{task_id}/plan-focus")
+@app.post("/tasks/{task_id}/plan-focus", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def plan_focus_block(task_id: int, request: Request, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
@@ -641,7 +866,7 @@ async def plan_focus_block(task_id: int, request: Request, db: Session = Depends
 DEEP_WORK_XP = {25: 15, 50: 35, 90: 60}
 
 
-@app.get("/deepwork", response_class=HTMLResponse)
+@app.get("/deepwork", response_class=HTMLResponse, dependencies=[Depends(require_authenticated)])
 async def deep_work_page(request: Request, db: Session = Depends(get_db)):
     active_session = db.query(DeepWorkSession).filter(DeepWorkSession.status == "active").first()
     active_task = None
@@ -672,7 +897,7 @@ async def deep_work_page(request: Request, db: Session = Depends(get_db)):
     ))
 
 
-@app.post("/deepwork/start")
+@app.post("/deepwork/start", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def start_deep_work(
     request: Request,
     task_id: int = Form(0),
@@ -695,7 +920,7 @@ async def start_deep_work(
     return RedirectResponse(url="/deepwork", status_code=303)
 
 
-@app.post("/deepwork/{session_id}/complete")
+@app.post("/deepwork/{session_id}/complete", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def complete_deep_work(
     session_id: int,
     request: Request,
@@ -739,7 +964,7 @@ async def complete_deep_work(
     return RedirectResponse(url="/deepwork", status_code=303)
 
 
-@app.post("/deepwork/{session_id}/cancel")
+@app.post("/deepwork/{session_id}/cancel", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def cancel_deep_work(session_id: int, request: Request, db: Session = Depends(get_db)):
     session = db.query(DeepWorkSession).filter(DeepWorkSession.id == session_id).first()
     if session:
@@ -766,7 +991,7 @@ def get_today_events(db: Session, target_date: date = None) -> list:
     ]
 
 
-@app.get("/schedule", response_class=HTMLResponse)
+@app.get("/schedule", response_class=HTMLResponse, dependencies=[Depends(require_authenticated)])
 async def schedule_page(request: Request, db: Session = Depends(get_db)):
     today = date.today()
     start_of_week = today - timedelta(days=today.weekday())
@@ -792,7 +1017,7 @@ async def schedule_page(request: Request, db: Session = Depends(get_db)):
     ))
 
 
-@app.post("/events/add")
+@app.post("/events/add", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def add_event(
     request: Request,
     title: str = Form(...),
@@ -890,7 +1115,7 @@ async def add_event(
     return RedirectResponse(url="/schedule", status_code=303)
 
 
-@app.post("/events/{event_id}/delete-series")
+@app.post("/events/{event_id}/delete-series", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def delete_event_series(event_id: int, request: Request, db: Session = Depends(get_db)):
     """Delete an event and all its recurring instances."""
     event = db.query(Event).filter(Event.id == event_id).first()
@@ -910,7 +1135,7 @@ async def delete_event_series(event_id: int, request: Request, db: Session = Dep
     return RedirectResponse(url="/schedule", status_code=303)
 
 
-@app.post("/events/{event_id}/delete")
+@app.post("/events/{event_id}/delete", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def delete_event(event_id: int, request: Request, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.id == event_id).first()
     if event:

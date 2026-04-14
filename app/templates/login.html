@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.login-shell {
+    min-height: calc(100vh - 80px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.login-card {
+    width: min(100%, 420px);
+    padding: 24px;
+}
+.login-title {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    margin-bottom: 8px;
+}
+.login-copy {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 18px;
+}
+.login-meta {
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    text-align: center;
+}
+@media (min-width: 720px) {
+    .login-card {
+        padding: 28px;
+    }
+}
+{% endblock %}
+
+{% block content %}
+<div class="login-shell">
+    <div class="card login-card fade-in">
+        <div class="login-title">Sign In</div>
+        <div class="login-copy">This deployment is protected. Enter your application credentials to continue.</div>
+        <form method="post" action="/login">
+            {{ csrf_input(request) }}
+            <input type="hidden" name="next_path" value="{{ next_path }}">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" value="{{ app_username }}" autocomplete="username" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Sign In</button>
+        </form>
+        <div class="login-meta">Authorized users only.</div>
+    </div>
+</div>
+{% endblock %}

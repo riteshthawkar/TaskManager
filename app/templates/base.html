@@ -7,7 +7,7 @@
 
     <!-- PWA -->
     <link rel="manifest" href="/static/manifest.json">
-    <meta name="theme-color" content="#000000">
+    <meta name="theme-color" content="#020302">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Tasks">
@@ -15,29 +15,48 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* ═══════════════════════════════════════════
+           DESIGN SYSTEM — Blackout Neon Green
+           ═══════════════════════════════════════════ */
         :root {
-            --bg: #000000;
-            --surface: rgba(28,28,30,0.72);
-            --surface-solid: #1c1c1e;
-            --surface-hover: rgba(44,44,46,0.8);
-            --surface-raised: rgba(44,44,46,0.65);
-            --border: rgba(255,255,255,0.08);
-            --border-hover: rgba(255,255,255,0.14);
-            --text: #f5f5f7;
-            --text-secondary: rgba(255,255,255,0.50);
-            --text-tertiary: rgba(255,255,255,0.30);
-            --accent: #0a84ff;
-            --green: #30d158;
-            --orange: #ff9f0a;
-            --red: #ff453a;
-            --purple: #bf5af2;
-            --cyan: #64d2ff;
-            --yellow: #ffd60a;
+            --bg: #020302;
+            --bg-gradient: none;
+            --surface: rgba(8,10,8,0.88);
+            --surface-solid: #0a0d0a;
+            --surface-hover: rgba(14,18,14,0.96);
+            --surface-raised: rgba(11,15,11,0.96);
+            --border: rgba(149,255,69,0.11);
+            --border-hover: rgba(149,255,69,0.28);
+            --text: #f3fff0;
+            --text-secondary: rgba(221,235,216,0.72);
+            --text-tertiary: rgba(160,179,155,0.54);
+            --accent: #95ff45;
+            --accent-bright: #c4ff8a;
+            --accent-glow: rgba(149,255,69,0.18);
+            --green: #30ff85;
+            --green-glow: rgba(48,255,133,0.14);
+            --orange: #FFB800;
+            --orange-glow: rgba(255,184,0,0.15);
+            --red: #FF4D6A;
+            --red-glow: rgba(255,77,106,0.15);
+            --purple: #79ff5b;
+            --purple-glow: rgba(121,255,91,0.12);
+            --cyan: #63ffaf;
+            --cyan-glow: rgba(99,255,175,0.14);
+            --yellow: #FFE566;
+            --neon-pink: #b4ff72;
+            --neon-pink-glow: rgba(180,255,114,0.12);
             --radius: 16px;
             --radius-sm: 12px;
             --radius-xs: 10px;
+            --shadow-sm: 0 8px 24px rgba(0,0,0,0.34);
+            --shadow-md: 0 18px 48px rgba(0,0,0,0.48);
+            --shadow-lg: 0 28px 80px rgba(0,0,0,0.58);
+            --glow-accent: 0 0 24px rgba(149,255,69,0.22);
+            --glow-green: 0 0 24px rgba(48,255,133,0.22);
+            --glow-purple: 0 0 20px rgba(121,255,91,0.18);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -48,83 +67,89 @@
             color: var(--text);
             line-height: 1.5;
             min-height: 100vh;
+            min-height: 100dvh;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
 
-        .container { max-width: 880px; margin: 0 auto; padding: 0 14px; }
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 0 16px;
+        }
 
-        /* ── Nav ────────────────────────── */
+        /* ── Nav ─────────────────────────────── */
         nav {
-            background: rgba(0,0,0,0.7);
+            background: rgba(2,4,2,0.94);
             backdrop-filter: blur(40px) saturate(180%);
             -webkit-backdrop-filter: blur(40px) saturate(180%);
-            border-bottom: 1px solid var(--border);
-            padding: 10px 0 12px;
+            border-bottom: 1px solid rgba(149,255,69,0.10);
+            padding: 12px 0;
             position: sticky;
             top: 0;
             z-index: 100;
         }
         nav .container {
             display: flex;
-            flex-direction: column;
-            align-items: stretch;
+            justify-content: space-between;
+            align-items: center;
             gap: 12px;
         }
         nav .brand {
             font-size: 15px;
-            font-weight: 700;
+            font-weight: 800;
             color: var(--text);
             text-decoration: none;
-            letter-spacing: -0.3px;
-            text-align: center;
+            letter-spacing: -0.5px;
         }
-        nav .nav-links {
-            display: none;
+        nav .brand span {
+            color: var(--accent-bright);
         }
+        nav .nav-links { display: none; }
         nav .nav-links a {
             color: var(--text-secondary);
             text-decoration: none;
-            font-size: 11px;
+            font-size: 13px;
             font-weight: 500;
-            padding: 9px 0;
+            padding: 7px 14px;
             border-radius: var(--radius-xs);
             transition: all 0.2s;
-            text-align: center;
             white-space: nowrap;
         }
         nav .nav-links a.active {
-            color: var(--text);
-            background: rgba(255,255,255,0.06);
+            color: var(--accent-bright);
+            background: var(--accent-glow);
         }
-        nav .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+        nav .nav-links a:hover { color: var(--text); background: rgba(149,255,69,0.08); }
         nav .nav-links a.nav-cta {
             background: var(--accent);
-            color: #fff;
+            color: #041005;
             font-weight: 600;
+            box-shadow: var(--glow-accent);
         }
-        nav .nav-links a.nav-cta:hover { background: #409cff; }
+        nav .nav-links a.nav-cta:hover { background: var(--accent-bright); }
 
-        .page-content { padding: 20px 0 98px; }
+        .page-content { padding: 20px 0 100px; }
 
-        /* ── Glass Card ────────────────── */
+        /* ── Glass Card ──────────────────────── */
         .card {
             background: var(--surface);
-            backdrop-filter: blur(40px) saturate(150%);
-            -webkit-backdrop-filter: blur(40px) saturate(150%);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             padding: 16px;
             margin-bottom: 14px;
+            box-shadow: var(--shadow-sm);
         }
 
-        /* ── Buttons ───────────────────── */
+        /* ── Buttons ─────────────────────────── */
         .btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 6px;
-            padding: 8px 16px;
+            padding: 9px 16px;
             border-radius: var(--radius-xs);
             border: none;
             cursor: pointer;
@@ -134,43 +159,77 @@
             text-decoration: none;
             transition: all 0.2s;
             min-height: 40px;
+            white-space: nowrap;
+            --loader-track: rgba(149,255,69,0.20);
+            --loader-head: var(--accent-bright);
         }
-        .btn-primary { background: var(--accent); color: #fff; }
-        .btn-primary:hover { background: #409cff; }
-        .btn-success { background: rgba(48,209,88,0.14); color: var(--green); border: 1px solid rgba(48,209,88,0.18); }
-        .btn-success:hover { background: rgba(48,209,88,0.22); }
-        .btn-danger { background: rgba(255,69,58,0.12); color: var(--red); border: 1px solid rgba(255,69,58,0.15); }
-        .btn-danger:hover { background: rgba(255,69,58,0.20); }
-        .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-secondary); }
-        .btn-outline:hover { background: rgba(255,255,255,0.05); color: var(--text); border-color: var(--border-hover); }
+        .btn-primary {
+            background: var(--accent);
+            color: #041005;
+            box-shadow: var(--glow-accent);
+            --loader-track: rgba(4,16,5,0.22);
+            --loader-head: #041005;
+        }
+        .btn-primary:hover { background: var(--accent-bright); box-shadow: 0 0 28px rgba(149,255,69,0.30); }
+        .btn-success {
+            background: var(--green-glow);
+            color: var(--green);
+            border: 1px solid rgba(48,255,133,0.20);
+        }
+        .btn-success:hover { background: rgba(48,255,133,0.18); box-shadow: 0 0 16px rgba(48,255,133,0.18); }
+        .btn-danger {
+            background: var(--red-glow);
+            color: var(--red);
+            border: 1px solid rgba(255,77,106,0.18);
+        }
+        .btn-danger:hover { background: rgba(255,77,106,0.20); box-shadow: 0 0 16px rgba(255,77,106,0.2); }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+        .btn-outline:hover {
+            background: rgba(149,255,69,0.06);
+            color: var(--text);
+            border-color: var(--border-hover);
+        }
         .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 8px; min-height: 34px; }
-        .btn-lg { padding: 12px 18px; font-size: 13px; min-height: 46px; }
+        .btn-lg { padding: 12px 20px; font-size: 14px; min-height: 46px; }
 
-        /* ── Forms ──────────────────────── */
+        /* ── Forms ────────────────────────────── */
         input, textarea, select {
             width: 100%;
-            padding: 10px 14px;
-            background: rgba(255,255,255,0.05);
+            padding: 11px 14px;
+            background: rgba(255,255,255,0.03);
             border: 1px solid var(--border);
             border-radius: var(--radius-xs);
             color: var(--text);
             font-size: 16px;
             font-family: inherit;
             transition: all 0.2s;
+            -webkit-appearance: none;
         }
         input:focus, textarea:focus, select:focus {
             outline: none;
             border-color: var(--accent);
-            background: rgba(255,255,255,0.07);
+            background: rgba(149,255,69,0.05);
+            box-shadow: 0 0 0 3px var(--accent-glow), var(--glow-accent);
         }
         input::placeholder, textarea::placeholder { color: var(--text-tertiary); }
         textarea { resize: vertical; min-height: 96px; }
         select { cursor: pointer; }
         select option { background: var(--surface-solid); color: var(--text); }
-        label { display: block; font-weight: 500; margin-bottom: 6px; font-size: 13px; color: var(--text-secondary); }
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            letter-spacing: 0.01em;
+        }
         .form-group { margin-bottom: 16px; }
 
-        /* ── Badges ─────────────────────── */
+        /* ── Badges ───────────────────────────── */
         .badge {
             display: inline-flex;
             align-items: center;
@@ -178,23 +237,34 @@
             border-radius: 6px;
             font-size: 11px;
             font-weight: 600;
+            letter-spacing: 0.02em;
         }
-        .p1 { background: rgba(48,209,88,0.12); color: var(--green); }
-        .p2 { background: rgba(100,210,255,0.12); color: var(--cyan); }
-        .p3 { background: rgba(255,214,10,0.12); color: var(--yellow); }
-        .p4 { background: rgba(255,159,10,0.12); color: var(--orange); }
-        .p5 { background: rgba(255,69,58,0.12); color: var(--red); }
+        .p1 { background: var(--green-glow); color: var(--green); }
+        .p2 { background: var(--cyan-glow); color: var(--cyan); }
+        .p3 { background: rgba(255,229,102,0.12); color: var(--yellow); }
+        .p4 { background: var(--orange-glow); color: var(--orange); }
+        .p5 { background: var(--red-glow); color: var(--red); }
 
         .status-pending { color: var(--text-tertiary); }
         .status-in_progress { color: var(--accent); }
         .status-completed { color: var(--green); }
 
-        /* ── Typography ────────────────── */
-        h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
-        h2 { font-size: 16px; font-weight: 600; margin-bottom: 12px; letter-spacing: -0.2px; }
+        /* ── Typography ──────────────────────── */
+        h1 {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -0.6px;
+            line-height: 1.2;
+        }
+        h2 {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 12px;
+            letter-spacing: -0.3px;
+        }
         .muted { color: var(--text-secondary); font-size: 13px; }
 
-        /* ── Utilities ─────────────────── */
+        /* ── Utilities ───────────────────────── */
         .flex-between {
             display: flex;
             justify-content: space-between;
@@ -221,57 +291,77 @@
             line-height: 1.45;
         }
         .alert-success {
-            border-color: rgba(48,209,88,0.22);
+            border-color: rgba(48,255,133,0.25);
             color: var(--green);
+            background: var(--green-glow);
+            box-shadow: 0 0 12px rgba(48,255,133,0.08);
         }
         .alert-error {
-            border-color: rgba(255,69,58,0.22);
+            border-color: rgba(255,77,106,0.25);
             color: var(--red);
+            background: var(--red-glow);
+            box-shadow: 0 0 12px rgba(255,77,106,0.08);
         }
         .alert-info {
-            border-color: rgba(10,132,255,0.22);
-            color: var(--accent);
+            border-color: rgba(149,255,69,0.25);
+            color: var(--accent-bright);
+            background: var(--accent-glow);
+            box-shadow: 0 0 12px rgba(149,255,69,0.08);
         }
 
+        /* ── Mobile Tab Bar ──────────────────── */
         .mobile-tabbar {
             position: fixed;
             left: 0;
             right: 0;
             bottom: 0;
             z-index: 110;
-            padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
-            background: rgba(0,0,0,0.82);
+            padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+            background: rgba(3,5,3,0.94);
             backdrop-filter: blur(40px) saturate(180%);
             -webkit-backdrop-filter: blur(40px) saturate(180%);
-            border-top: 1px solid var(--border);
+            border-top: 1px solid rgba(149,255,69,0.10);
         }
         .mobile-tabbar-inner {
-            max-width: 880px;
+            max-width: 960px;
             margin: 0 auto;
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 8px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 4px;
         }
         .mobile-tabbar a {
-            color: var(--text-secondary);
+            color: var(--text-tertiary);
             text-decoration: none;
             text-align: center;
-            padding: 10px 6px;
+            padding: 8px 4px;
             font-size: 11px;
-            border-radius: 12px;
-            transition: all 0.2s;
+            font-weight: 500;
+            border-radius: 10px;
+            transition: all 0.25s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 3px;
+        }
+        .mobile-tabbar a .tab-icon {
+            font-size: 18px;
+            line-height: 1;
         }
         .mobile-tabbar a.active {
-            color: var(--text);
-            background: rgba(255,255,255,0.07);
+            color: var(--accent-bright);
+            background: var(--accent-glow);
+            box-shadow: 0 0 12px rgba(149,255,69,0.12);
         }
         .mobile-tabbar a.mobile-cta {
+            color: var(--accent-bright);
+        }
+        .mobile-tabbar a.mobile-cta.active {
             background: var(--accent);
-            color: #fff;
-            font-weight: 600;
+            color: #041005;
+            box-shadow: var(--glow-accent);
         }
 
-        /* ── Button Loader ─────────────── */
+        /* ── Button Loader ───────────────────── */
         .btn.loading, button.loading {
             pointer-events: none;
             opacity: 0.7;
@@ -284,61 +374,66 @@
             width: 16px; height: 16px;
             top: 50%; left: 50%;
             margin: -8px 0 0 -8px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: #fff;
+            border: 2px solid var(--loader-track);
+            border-top-color: var(--loader-head);
             border-radius: 50%;
             animation: spin 0.6s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* ── Animations ────────────────── */
+        /* ── Animations ──────────────────────── */
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
+            from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .fade-in { animation: fadeIn 0.35s ease-out both; }
-        .d1 { animation-delay: 0.04s; }
-        .d2 { animation-delay: 0.08s; }
-        .d3 { animation-delay: 0.12s; }
-        .d4 { animation-delay: 0.16s; }
+        .fade-in { animation: fadeIn 0.4s ease-out both; }
+        .d1 { animation-delay: 0.05s; }
+        .d2 { animation-delay: 0.1s; }
+        .d3 { animation-delay: 0.15s; }
+        .d4 { animation-delay: 0.2s; }
+        .d5 { animation-delay: 0.25s; }
 
-        /* ── PWA standalone ─────────────── */
-        @media (display-mode: standalone) {
-            body { padding-top: env(safe-area-inset-top); }
-            .page-content { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+        /* ── Section headers ─────────────────── */
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .section-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            flex-shrink: 0;
         }
 
+        /* ── PWA standalone ───────────────────── */
+        @media (display-mode: standalone) {
+            body { padding-top: env(safe-area-inset-top); }
+            .page-content { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
+        }
+
+        /* ── Tablet+ ─────────────────────────── */
         @media (min-width: 720px) {
-            .container { padding: 0 20px; }
+            .container { padding: 0 24px; }
             nav { padding: 14px 0; }
-            nav .container {
-                flex-direction: row;
-                justify-content: space-between;
-                align-items: center;
-                gap: 16px;
-            }
             nav .brand {
                 font-size: 17px;
                 text-align: left;
             }
             nav .nav-links {
                 display: flex;
-                gap: 2px;
-            }
-            nav .nav-links a {
-                font-size: 13px;
-                padding: 7px 14px;
+                gap: 4px;
             }
             .page-content { padding: 32px 0 80px; }
             .card {
                 padding: 20px;
-                margin-bottom: 12px;
+                margin-bottom: 14px;
             }
             .alerts { margin-bottom: 16px; }
-            .btn-lg { padding: 12px 24px; font-size: 14px; }
+            .btn-lg { padding: 12px 28px; font-size: 14px; }
             input, textarea, select { font-size: 14px; }
             textarea { min-height: 80px; }
-            h1 { font-size: 28px; }
+            h1 { font-size: 30px; }
             h2 { font-size: 17px; }
             .flex-between {
                 align-items: center;
@@ -352,17 +447,19 @@
     </style>
 </head>
 <body>
+    {% if not hide_nav %}
     <nav>
         <div class="container">
-            <a href="/" class="brand">TaskManager</a>
+            <a href="/" class="brand">Task<span>Manager</span></a>
             <div class="nav-links">
                 <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Home</a>
                 <a href="/schedule" class="{% if request.url.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
                 <a href="/deepwork" class="{% if request.url.path.startswith('/deepwork') %}active{% endif %}">Focus</a>
-                <a href="/tasks/add" class="nav-cta {% if request.url.path.startswith('/tasks/add') %}active{% endif %}">+ New</a>
+                <a href="/tasks/add" class="nav-cta {% if request.url.path.startswith('/tasks/add') %}active{% endif %}">+ New Task</a>
             </div>
         </div>
     </nav>
+    {% endif %}
     <div class="container">
         <div class="page-content">
             {% if alerts %}
@@ -375,14 +472,24 @@
             {% block content %}{% endblock %}
         </div>
     </div>
+    {% if not hide_nav and authenticated %}
     <div class="mobile-tabbar">
         <div class="mobile-tabbar-inner">
-            <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Home</a>
-            <a href="/schedule" class="{% if request.url.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
-            <a href="/deepwork" class="{% if request.url.path.startswith('/deepwork') %}active{% endif %}">Focus</a>
-            <a href="/tasks/add" class="mobile-cta {% if request.url.path.startswith('/tasks/add') %}active{% endif %}">+ New</a>
+            <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">
+                <span class="tab-icon">&#9750;</span>Home
+            </a>
+            <a href="/schedule" class="{% if request.url.path.startswith('/schedule') %}active{% endif %}">
+                <span class="tab-icon">&#128197;</span>Schedule
+            </a>
+            <a href="/deepwork" class="{% if request.url.path.startswith('/deepwork') %}active{% endif %}">
+                <span class="tab-icon">&#9201;</span>Focus
+            </a>
+            <a href="/tasks/add" class="mobile-cta {% if request.url.path.startswith('/tasks/add') %}active{% endif %}">
+                <span class="tab-icon">&#43;</span>New
+            </a>
         </div>
     </div>
+    {% endif %}
     <script>
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/static/sw.js')
@@ -406,7 +513,6 @@
                     btn.innerHTML = '<span class="btn-text">' + text + '</span>';
                 }
                 btn.classList.add('loading');
-                // Prevent double submit
                 setTimeout(function(){ btn.disabled = true; }, 10);
             }
         });
