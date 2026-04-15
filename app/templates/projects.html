@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.projects-shell {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+.project-create,
+.project-list {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+}
+.project-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+.project-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.02);
+    padding: 16px;
+}
+.project-title {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+.project-desc {
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+}
+.project-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+.project-metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+.project-actions {
+    margin-top: 14px;
+    display: flex;
+    justify-content: flex-end;
+}
+.project-create-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+
+@media (min-width: 920px) {
+    .projects-shell {
+        grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
+        align-items: start;
+    }
+}
+{% endblock %}
+
+{% block content %}
+<div class="flex-between fade-in" style="margin-bottom: 20px;">
+    <div>
+        <h1>Projects</h1>
+        <p class="muted mt-xs">Group related tasks so your queue reflects outcomes, not just a flat list.</p>
+    </div>
+    <a href="/tasks/add" class="btn btn-primary btn-sm">+ New Task</a>
+</div>
+
+<div class="visual-card fade-in d1" style="margin-bottom: 16px;">
+    <img src="/static/art/schedule-meadow.svg" alt="Light meadow artwork">
+    <div class="visual-card-copy">
+        <strong>Use projects as containers for outcomes.</strong>
+        <span>When the queue gets busy, projects keep related tasks anchored to something meaningful instead of turning into a flat backlog.</span>
+    </div>
+</div>
+
+<div class="projects-shell">
+    <div class="project-create fade-in d1">
+        <h2>Create Project</h2>
+        <form method="post" action="/projects/create">
+            {{ csrf_input(request) }}
+            <div class="project-create-grid">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="name">Project name</label>
+                    <input type="text" id="name" name="name" placeholder="e.g., Career Switch Plan" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="description">Description (optional)</label>
+                    <textarea id="description" name="description" placeholder="What outcome does this project represent?"></textarea>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 14px;">Create Project</button>
+        </form>
+    </div>
+
+    <div class="project-list fade-in d2">
+        <div class="flex-between mb-md">
+            <h2 style="margin-bottom: 0;">Active Projects</h2>
+            <span class="muted">{{ projects|length }} total</span>
+        </div>
+        {% if projects %}
+        <div class="project-grid">
+            {% for item in projects %}
+            <div class="project-card">
+                <div class="project-title">{{ item.project.name }}</div>
+                <div class="project-desc">{{ item.project.description if item.project.description else "No description yet." }}</div>
+                <div class="project-metrics">
+                    <span class="project-metric">{{ item.open_count }} open</span>
+                    <span class="project-metric">{{ item.completed_count }} completed</span>
+                </div>
+                <div class="project-actions">
+                    <form method="post" action="/projects/{{ item.project.id }}/delete">
+                        {{ csrf_input(request) }}
+                        <button type="submit" class="btn btn-danger btn-sm">Delete Project</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty">No projects yet. Create one to group work into real outcomes.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

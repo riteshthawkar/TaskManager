@@ -143,6 +143,49 @@
             box-shadow: var(--shadow-sm);
         }
 
+        .visual-card {
+            position: relative;
+            overflow: hidden;
+            border-radius: 22px;
+            border: 1px solid rgba(149,255,69,0.10);
+            background: rgba(7,10,7,0.92);
+            box-shadow: var(--shadow-md);
+            min-height: 170px;
+        }
+        .visual-card img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .visual-card-copy {
+            position: absolute;
+            left: 16px;
+            right: 16px;
+            bottom: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 12px 14px;
+            border-radius: 16px;
+            background: rgba(3,5,3,0.78);
+            border: 1px solid rgba(149,255,69,0.10);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+        }
+        .visual-card-copy strong {
+            font-size: 14px;
+            letter-spacing: -0.02em;
+        }
+        .visual-card-copy span {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .visual-card.compact {
+            min-height: 140px;
+        }
+
         /* ── Buttons ─────────────────────────── */
         .btn {
             display: inline-flex;
@@ -326,7 +369,7 @@
             max-width: 960px;
             margin: 0 auto;
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 4px;
         }
         .mobile-tabbar a {
@@ -453,6 +496,7 @@
             <a href="/" class="brand">Task<span>Manager</span></a>
             <div class="nav-links">
                 <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Home</a>
+                <a href="/projects" class="{% if request.url.path.startswith('/projects') %}active{% endif %}">Projects</a>
                 <a href="/schedule" class="{% if request.url.path.startswith('/schedule') %}active{% endif %}">Schedule</a>
                 <a href="/deepwork" class="{% if request.url.path.startswith('/deepwork') %}active{% endif %}">Focus</a>
                 <a href="/tasks/add" class="nav-cta {% if request.url.path.startswith('/tasks/add') %}active{% endif %}">+ New Task</a>
@@ -477,6 +521,9 @@
         <div class="mobile-tabbar-inner">
             <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">
                 <span class="tab-icon">&#9750;</span>Home
+            </a>
+            <a href="/projects" class="{% if request.url.path.startswith('/projects') %}active{% endif %}">
+                <span class="tab-icon">&#128194;</span>Projects
             </a>
             <a href="/schedule" class="{% if request.url.path.startswith('/schedule') %}active{% endif %}">
                 <span class="tab-icon">&#128197;</span>Schedule

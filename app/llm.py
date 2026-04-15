@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from openai import OpenAI
 from dotenv import load_dotenv
 
+from app.time_utils import local_now, local_today_str
+
 load_dotenv()
 
 _client = None
@@ -173,7 +175,7 @@ def analyze_task(title: str, description: str, history: list = None,
                  user_deadline: str = None) -> dict:
     """Analyze a task using history + schedule aware LLM."""
     history_block, pending_block, schedule_block = _build_context_blocks(history, pending, schedule)
-    default_deadline = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    default_deadline = (local_now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
     try:
         prompt = TASK_ANALYSIS_PROMPT.format(
@@ -181,7 +183,7 @@ def analyze_task(title: str, description: str, history: list = None,
             pending=pending_block,
             schedule=schedule_block,
             user_deadline=user_deadline or "Not specified — suggest one",
-            today=datetime.now().strftime("%Y-%m-%d"),
+            today=local_today_str(),
         )
         response = _get_client().chat.completions.create(
             model="gpt-4o-mini",
@@ -226,7 +228,7 @@ def followup_analyze(title: str, description: str, questions: list, answers: lis
                      schedule: list = None, user_deadline: str = None) -> dict:
     """Re-analyze task after user answers clarifying questions."""
     history_block, pending_block, schedule_block = _build_context_blocks(history, pending, schedule)
-    default_deadline = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    default_deadline = (local_now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
     qa_block = "\n".join(
         f"Q: {q}\nA: {a}" for q, a in zip(questions, answers)
@@ -238,7 +240,7 @@ def followup_analyze(title: str, description: str, questions: list, answers: lis
             pending=pending_block,
             schedule=schedule_block,
             user_deadline=user_deadline or "Not specified",
-            today=datetime.now().strftime("%Y-%m-%d"),
+            today=local_today_str(),
         )
         response = _get_client().chat.completions.create(
             model="gpt-4o-mini",
@@ -392,7 +394,7 @@ def suggest_deep_work(tasks: list, total_dw_minutes: int, dw_sessions: int,
             total_dw_minutes=total_dw_minutes,
             dw_sessions=dw_sessions,
             current_streak=current_streak,
-            today=datetime.now().strftime("%Y-%m-%d"),
+            today=local_today_str(),
         )
         response = _get_client().chat.completions.create(
             model="gpt-4o-mini",

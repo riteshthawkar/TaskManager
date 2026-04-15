@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.completed-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.completed-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+}
+.completed-row {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+}
+.completed-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.completed-row:first-child {
+    padding-top: 0;
+}
+.completed-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+.completed-title a {
+    color: var(--text);
+    text-decoration: none;
+}
+.completed-title a:hover {
+    color: var(--accent-bright);
+}
+.completed-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.completed-desc {
+    color: var(--text-tertiary);
+    font-size: 13px;
+    line-height: 1.6;
+}
+{% endblock %}
+
+{% block content %}
+<div class="flex-between fade-in" style="margin-bottom: 20px;">
+    <div>
+        <h1>Completed Tasks</h1>
+        <p class="muted mt-xs">Browse older completed work and reopen task details when needed.</p>
+    </div>
+    <a href="/" class="btn btn-outline btn-sm">Dashboard</a>
+</div>
+
+<div class="completed-shell">
+    <div class="completed-card fade-in d1">
+        <h2 style="margin-bottom: 14px;">History</h2>
+        {% if completed_tasks %}
+            {% for task in completed_tasks %}
+            <div class="completed-row">
+                <div class="completed-title">
+                    <span class="badge p{{ task.priority }}">P{{ task.priority }}</span>
+                    <a href="/tasks/{{ task.id }}">{{ task.title }}</a>
+                </div>
+                <div class="completed-meta">
+                    <span>Completed {{ local_dt(task.completed_at).strftime('%b %d, %Y %I:%M %p') if task.completed_at else 'Unknown' }}</span>
+                    <span>&middot;</span>
+                    <span style="color: var(--accent);">+{{ task.xp_earned }} XP</span>
+                    {% if task.project_id and task.project_id in projects_by_id %}
+                    <span>&middot;</span>
+                    <span>{{ projects_by_id.get(task.project_id).name }}</span>
+                    {% endif %}
+                    {% if task.deadline %}
+                    <span>&middot;</span>
+                    <span>Deadline {{ local_dt(task.deadline).strftime('%b %d, %Y') }}</span>
+                    {% endif %}
+                    {% if task.tags_text %}
+                    <span>&middot;</span>
+                    <span>{{ task.tags_text }}</span>
+                    {% endif %}
+                </div>
+                {% if task.description %}
+                <div class="completed-desc">{{ task.description[:180] }}{% if task.description|length > 180 %}...{% endif %}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty">No completed tasks yet.</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

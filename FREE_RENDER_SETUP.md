@@ -16,6 +16,7 @@ APP_USERNAME=admin
 APP_PASSWORD=your-login-password
 SESSION_SECRET=your-random-session-secret
 SESSION_HTTPS_ONLY=true
+APP_TIMEZONE=Asia/Kolkata
 
 DATABASE_URL=postgresql://...
 OPENAI_API_KEY=...

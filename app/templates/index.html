@@ -65,6 +65,9 @@
     flex-direction: column;
     gap: 14px;
 }
+.dashboard-visual {
+    min-height: 220px;
+}
 
 /* ── Motivation ───────────── */
 .motivation {
@@ -179,6 +182,13 @@
     gap: 8px;
     line-height: 1.4;
 }
+.task-name a {
+    color: var(--text);
+    text-decoration: none;
+}
+.task-name a:hover {
+    color: var(--accent-bright);
+}
 .task-detail {
     font-size: 12px;
     color: var(--text-tertiary);
@@ -209,6 +219,33 @@
     font-size: 11px;
     color: var(--text-tertiary);
     margin-top: 4px;
+}
+.task-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(149,255,69,0.10);
+    background: rgba(255,255,255,0.03);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+}
+.task-chip.status-waiting {
+    color: var(--orange);
+    border-color: rgba(255,184,0,0.15);
+    background: rgba(255,184,0,0.10);
+}
+.task-chip.status-blocked {
+    color: var(--red);
+    border-color: rgba(255,77,106,0.15);
+    background: rgba(255,77,106,0.10);
+}
+.task-chip.status-in_progress {
+    color: var(--accent-bright);
+    border-color: rgba(149,255,69,0.18);
+    background: rgba(149,255,69,0.10);
 }
 .warn { color: var(--orange); font-weight: 600; }
 .urgent { color: var(--red); font-weight: 600; }
@@ -272,6 +309,38 @@
     font-size: 11px;
     color: var(--text-tertiary);
     margin-top: 2px;
+}
+.later-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.later-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+.later-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.later-name {
+    font-size: 13px;
+    font-weight: 600;
+}
+.later-meta {
+    margin-top: 3px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+.attention-card {
+    border-color: rgba(255,184,0,0.12);
+}
+.attention-card .plan-metric {
+    border-color: rgba(255,184,0,0.10);
 }
 .slot-chip {
     display: inline-flex;
@@ -343,6 +412,14 @@
         <div>{{ motivation }}</div>
     </div>
 
+    <div class="visual-card dashboard-visual fade-in d1">
+        <img src="/static/art/dashboard-canopy.svg" alt="Abstract canopy artwork">
+        <div class="visual-card-copy">
+            <strong>Protect calm, not just output.</strong>
+            <span>Today’s queue stays lean, later work stays out of the way, and blocked items surface before they silently derail the week.</span>
+        </div>
+    </div>
+
     <!-- Stats -->
     <div class="stats-row">
         <div class="stat fade-in d1">
@@ -362,7 +439,7 @@
             <div class="stat-lbl">Completed</div>
         </div>
         <div class="stat fade-in d4">
-            <div class="stat-val">{{ tasks | length }}</div>
+            <div class="stat-val">{{ open_tasks_count }}</div>
             <div class="stat-lbl">Active</div>
         </div>
     </div>
@@ -412,32 +489,56 @@
                         <div class="task-body">
                             <div class="task-name">
                                 <span class="badge p{{ task.priority }}">P{{ task.priority }}</span>
-                                <span>{{ task.title }}</span>
+                                <a href="/tasks/{{ task.id }}">{{ task.title }}</a>
+                                {% if task.project_id and task.project_id in projects_by_id %}
+                                <span class="task-chip">{{ projects_by_id.get(task.project_id).name }}</span>
+                                {% endif %}
+                                {% if task.repeat != 'none' %}
+                                <span class="task-chip">{{ task_repeat_labels.get(task.repeat) }}</span>
+                                {% endif %}
+                                {% if task.status != 'pending' %}
+                                <span class="task-chip status-{{ task.status }}">{{ task_status_labels.get(task.status) }}</span>
+                                {% endif %}
                             </div>
                             <div class="task-detail">
+                                {% if task.start_on %}
+                                    <span>Starts {{ task.start_on.strftime('%b %d') }}</span>
+                                    {% if task.deadline or task.estimated_completion or task.description or task.tags_text %}
+                                    <span class="sep"></span>
+                                    {% endif %}
+                                {% endif %}
                                 {% if task.deadline %}
                                     {% set hours_left = ((task.deadline - now).total_seconds() / 3600) | int %}
+                                    {% set deadline_local = local_dt(task.deadline) %}
                                     {% if hours_left < 0 %}
                                         <span class="urgent">Overdue {{ (-hours_left) }}h</span>
                                     {% elif hours_left < 24 %}
                                         <span class="warn">Due in {{ hours_left }}h</span>
                                     {% else %}
-                                        <span>{{ task.deadline.strftime('%b %d, %Y') }}</span>
+                                        <span>{{ deadline_local.strftime('%b %d, %Y') }}</span>
                                     {% endif %}
                                 {% else %}
                                     <span>No deadline</span>
                                 {% endif %}
                                 {% if task.estimated_completion %}
+                                    {% set estimated_local = local_dt(task.estimated_completion) %}
                                     <span class="sep"></span>
-                                    <span>Estimated {{ task.estimated_completion.strftime('%b %d') }}</span>
+                                    <span>Estimated {{ estimated_local.strftime('%b %d') }}</span>
                                 {% endif %}
                                 {% if task.description %}
                                     <span class="sep"></span>
                                     <span>{{ task.description[:35] }}{% if task.description|length > 35 %}...{% endif %}</span>
                                 {% endif %}
+                                {% if task.tags_text %}
+                                    <span class="sep"></span>
+                                    <span>{{ task.tags_text }}</span>
+                                {% endif %}
                             </div>
                             {% if task_focus_counts.get(task.id) %}
                             <div class="task-note">{{ task_focus_counts.get(task.id) }} focus block{% if task_focus_counts.get(task.id) != 1 %}s{% endif %} reserved</div>
+                            {% endif %}
+                            {% if subtask_summary.get(task.id, {}).get('total', 0) %}
+                            <div class="task-note">{{ subtask_summary.get(task.id, {}).get('completed', 0) }} / {{ subtask_summary.get(task.id, {}).get('total', 0) }} subtasks complete</div>
                             {% endif %}
                         </div>
                         <div class="task-btns">
@@ -463,45 +564,94 @@
                     </div>
                     {% endfor %}
                 {% else %}
-                    <div class="empty">No active tasks yet. Tap <strong>+ New Task</strong> to get started.</div>
+                    <div class="empty">No ready tasks right now. Tap <strong>+ New Task</strong> to capture something or defer a task until later.</div>
                 {% endif %}
             </div>
+            {% if later_tasks %}
+            <div class="card fade-in d5">
+                <div class="flex-between mb-md">
+                    <h2 style="margin-bottom:0;">Later Queue</h2>
+                    <a href="/projects" class="btn btn-outline btn-sm">Projects</a>
+                </div>
+                <div class="later-list">
+                    {% for task in later_tasks %}
+                    <div class="later-item">
+                        <div>
+                            <div class="later-name">{{ task.title }}</div>
+                            <div class="later-meta">
+                                Starts {{ task.start_on.strftime('%b %d, %Y') if task.start_on else 'Later' }}
+                                {% if task.project_id and task.project_id in projects_by_id %} &middot; {{ projects_by_id.get(task.project_id).name }}{% endif %}
+                                {% if task.tags_text %} &middot; {{ task.tags_text }}{% endif %}
+                            </div>
+                        </div>
+                        <a href="/tasks/{{ task.id }}" class="btn btn-outline btn-sm">Edit</a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            {% if attention_tasks %}
+            <div class="card attention-card fade-in d5">
+                <div class="flex-between mb-md">
+                    <h2 style="margin-bottom:0;">Needs Attention</h2>
+                    <span class="muted">{{ attention_tasks_count }} held</span>
+                </div>
+                <div class="later-list">
+                    {% for task in attention_tasks %}
+                    <div class="later-item">
+                        <div>
+                            <div class="later-name">{{ task.title }}</div>
+                            <div class="later-meta">
+                                {{ task_status_labels.get(task.status) }}
+                                {% if task.project_id and task.project_id in projects_by_id %} &middot; {{ projects_by_id.get(task.project_id).name }}{% endif %}
+                                {% if task.tags_text %} &middot; {{ task.tags_text }}{% endif %}
+                            </div>
+                        </div>
+                        <a href="/tasks/{{ task.id }}" class="btn btn-outline btn-sm">Review</a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
         </div>
 
         <div class="dashboard-side">
             <!-- Today Plan -->
             <div class="card today-plan fade-in d3">
                 <div class="flex-between mb-md">
-                    <h2 style="margin-bottom:0;">Today's Plan</h2>
+                    <h2 style="margin-bottom:0;">Today Queue</h2>
                     <a href="/schedule" class="btn btn-outline btn-sm">Schedule</a>
                 </div>
                 <div class="plan-metrics">
                     <div class="plan-metric">
-                        <div class="plan-metric-value" style="color: var(--red);">{{ urgent_tasks | length }}</div>
-                        <div class="plan-metric-label">Priority</div>
+                        <div class="plan-metric-value" style="color: var(--accent);">{{ today_queue_count }}</div>
+                        <div class="plan-metric-label">Ready</div>
                     </div>
                     <div class="plan-metric">
-                        <div class="plan-metric-value" style="color: var(--accent);">{{ today_events_count }}</div>
-                        <div class="plan-metric-label">Events</div>
+                        <div class="plan-metric-value" style="color: var(--red);">{{ overdue_tasks_count }}</div>
+                        <div class="plan-metric-label">Overdue</div>
                     </div>
                     <div class="plan-metric">
-                        <div class="plan-metric-value" style="color: var(--green);">{{ today_focus_blocks }}</div>
-                        <div class="plan-metric-label">Focus</div>
+                        <div class="plan-metric-value" style="color: var(--green);">{{ later_tasks_count }}</div>
+                        <div class="plan-metric-label">Later</div>
                     </div>
                 </div>
                 {% if next_focus_slot_label %}
                 <div class="slot-chip">Next free slot: {{ next_focus_slot_label }}</div>
                 {% endif %}
-                {% if urgent_tasks %}
+                {% if today_queue %}
                 <div class="plan-list">
-                    {% for task in urgent_tasks %}
+                    {% for task in today_queue %}
                     <div class="plan-item">
                         <div>
                             <div class="plan-task-name">{{ task.title }}</div>
                             <div class="plan-task-meta">
                                 P{{ task.priority }}
-                                {% if task.deadline %} &middot; due {{ task.deadline.strftime('%b %d') }}{% endif %}
-                                {% if task.estimated_completion %} &middot; estimated {{ task.estimated_completion.strftime('%b %d') }}{% endif %}
+                                {% if task.project_id and task.project_id in projects_by_id %} &middot; {{ projects_by_id.get(task.project_id).name }}{% endif %}
+                                {% if task.deadline %} &middot; due {{ local_dt(task.deadline).strftime('%b %d') }}{% endif %}
+                                {% if task.estimated_completion %} &middot; estimated {{ local_dt(task.estimated_completion).strftime('%b %d') }}{% endif %}
+                                {% if task.tags_text %} &middot; {{ task.tags_text }}{% endif %}
+                                {% if subtask_summary.get(task.id, {}).get('total', 0) %} &middot; {{ subtask_summary.get(task.id, {}).get('completed', 0) }}/{{ subtask_summary.get(task.id, {}).get('total', 0) }} subtasks{% endif %}
                             </div>
                         </div>
                         <form method="post" action="/tasks/{{ task.id }}/plan-focus">
@@ -512,23 +662,54 @@
                     {% endfor %}
                 </div>
                 {% else %}
-                <div class="empty" style="padding: 12px 0 0;">No top-priority tasks right now.</div>
+                <div class="empty" style="padding: 12px 0 0;">No tasks are ready today. Use start dates to keep future work out of the way.</div>
                 {% endif %}
+            </div>
+
+            <div class="card fade-in d4">
+                <div class="flex-between mb-md">
+                    <h2 style="margin-bottom:0;">Today Snapshot</h2>
+                    <a href="/projects" class="btn btn-outline btn-sm">Projects</a>
+                </div>
+                <div class="plan-list">
+                    <div class="plan-item">
+                        <div>
+                            <div class="plan-task-name">{{ today_events_count }} scheduled event{% if today_events_count != 1 %}s{% endif %}</div>
+                            <div class="plan-task-meta">Calendar load for today</div>
+                        </div>
+                    </div>
+                    <div class="plan-item">
+                        <div>
+                            <div class="plan-task-name">{{ today_focus_blocks }} focus block{% if today_focus_blocks != 1 %}s{% endif %}</div>
+                            <div class="plan-task-meta">Protected focus time on the schedule</div>
+                        </div>
+                    </div>
+                    <div class="plan-item">
+                        <div>
+                            <div class="plan-task-name">{{ completed_tasks|length }} recently completed</div>
+                            <div class="plan-task-meta">Quick access to finished work</div>
+                        </div>
+                        <a href="/tasks/completed" class="btn btn-outline btn-sm">History</a>
+                    </div>
+                </div>
             </div>
 
             <!-- Completed -->
             {% if completed_tasks %}
             <div class="card fade-in d5">
-                <h2>Recently Completed</h2>
+                <div class="flex-between mb-md">
+                    <h2 style="margin-bottom:0;">Recently Completed</h2>
+                    <a href="/tasks/completed" class="btn btn-outline btn-sm">View All</a>
+                </div>
                 {% for task in completed_tasks %}
                 <div class="task-item done-row" style="padding: 10px 0;">
                     <div class="task-body">
                         <div class="task-name">
                             <span class="badge p{{ task.priority }}">P{{ task.priority }}</span>
-                            <span style="text-decoration: line-through;">{{ task.title }}</span>
+                            <a href="/tasks/{{ task.id }}" style="text-decoration: line-through;">{{ task.title }}</a>
                         </div>
                         <div class="task-detail">
-                            <span>{{ task.completed_at.strftime('%b %d') }}</span>
+                            <span>{{ local_dt(task.completed_at).strftime('%b %d') }}</span>
                             <span class="sep"></span>
                             <span style="color: var(--accent);">+{{ task.xp_earned }} XP</span>
                         </div>

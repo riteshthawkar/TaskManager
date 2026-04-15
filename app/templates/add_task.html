@@ -165,6 +165,12 @@
     transition: all 0.2s;
 }
 .skip-link:hover { color: var(--text-secondary); background: rgba(255,255,255,0.03); }
+.field-hint {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 5px;
+    line-height: 1.5;
+}
 
 @media (min-width: 720px) {
     .analysis,
@@ -185,6 +191,14 @@
 <div class="fade-in" style="margin-bottom: 24px;">
     <h1>Add New Task</h1>
     <p class="muted mt-xs">Describe your task and AI will help prioritize it.</p>
+</div>
+
+<div class="visual-card fade-in d1" style="margin-bottom: 18px;">
+    <img src="/static/art/dashboard-canopy.svg" alt="Soft canopy artwork">
+    <div class="visual-card-copy">
+        <strong>Capture the work before it becomes noise.</strong>
+        <span>Add the task, give it a start date if it is not for today, and let the AI shape the deadline without flooding your queue.</span>
+    </div>
 </div>
 
 <div class="steps fade-in d1">
@@ -216,6 +230,39 @@
             <label for="user_deadline">Your deadline (optional)</label>
             <input type="date" id="user_deadline" name="user_deadline">
         </div>
+        <div class="two-col">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="project_id">Project</label>
+                <select id="project_id" name="project_id">
+                    <option value="">No project</option>
+                    {% for project in projects %}
+                    <option value="{{ project.id }}">{{ project.name }}</option>
+                    {% endfor %}
+                </select>
+                <div class="field-hint">Create or clean up projects from the <a href="/projects" style="color: var(--accent-bright);">Projects</a> page.</div>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="tags">Tags (optional)</label>
+                <input type="text" id="tags" name="tags" placeholder="e.g., admin, writing, quick-win">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="start_on">Start date / defer until</label>
+                <input type="date" id="start_on" name="start_on">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="repeat">Repeat</label>
+                <select id="repeat" name="repeat">
+                    <option value="none">Does not repeat</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekdays">Weekdays</option>
+                    <option value="weekly">Weekly</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="repeat_until">Repeat until (optional unless repeating)</label>
+            <input type="date" id="repeat_until" name="repeat_until">
+        </div>
         <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Analyze with AI</button>
     </form>
 </div>
@@ -235,6 +282,11 @@
         <input type="hidden" name="title" value="{{ title }}">
         <input type="hidden" name="description" value="{{ description }}">
         <input type="hidden" name="user_deadline" value="{{ user_deadline or '' }}">
+        <input type="hidden" name="project_id" value="{{ project_id or '' }}">
+        <input type="hidden" name="tags" value="{{ tags or '' }}">
+        <input type="hidden" name="start_on" value="{{ start_on or '' }}">
+        <input type="hidden" name="repeat" value="{{ repeat or 'none' }}">
+        <input type="hidden" name="repeat_until" value="{{ repeat_until or '' }}">
 
         {% for q in analysis.questions %}
         <div class="q-item">
@@ -269,9 +321,14 @@
         {{ csrf_input(request) }}
         <input type="hidden" name="title" value="{{ title }}">
         <input type="hidden" name="description" value="{{ description }}">
+        <input type="hidden" name="project_id" value="{{ project_id or '' }}">
+        <input type="hidden" name="tags" value="{{ tags or '' }}">
+        <input type="hidden" name="start_on" value="{{ start_on or '' }}">
         <input type="hidden" name="priority" value="{{ analysis.suggested_priority }}">
         <input type="hidden" name="deadline" value="{{ analysis.suggested_deadline }}">
         <input type="hidden" name="estimated_completion" value="{{ analysis.estimated_completion_date or '' }}">
+        <input type="hidden" name="repeat" value="{{ repeat or 'none' }}">
+        <input type="hidden" name="repeat_until" value="{{ repeat_until or '' }}">
         <button type="submit" class="skip-link" style="background:none; border:none; cursor:pointer; font-family:inherit; width:100%;">
             Skip &mdash; use AI suggestions as-is
         </button>
@@ -311,6 +368,38 @@
                 <label for="estimated_completion">Estimated Completion</label>
                 <input type="date" id="estimated_completion" name="estimated_completion" value="{{ analysis.estimated_completion_date or '' }}">
             </div>
+        </div>
+        <div class="two-col">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="project_id">Project</label>
+                <select id="project_id" name="project_id">
+                    <option value="">No project</option>
+                    {% for project in projects %}
+                    <option value="{{ project.id }}" {% if project_id and project.id == (project_id|int) %}selected{% endif %}>{{ project.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="tags">Tags</label>
+                <input type="text" id="tags" name="tags" value="{{ tags or '' }}" placeholder="admin, writing, quick-win">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="start_on">Start date / defer until</label>
+                <input type="date" id="start_on" name="start_on" value="{{ start_on or '' }}">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="repeat">Repeat</label>
+                <select id="repeat" name="repeat">
+                    <option value="none" {% if (repeat or 'none') == 'none' %}selected{% endif %}>Does not repeat</option>
+                    <option value="daily" {% if repeat == 'daily' %}selected{% endif %}>Daily</option>
+                    <option value="weekdays" {% if repeat == 'weekdays' %}selected{% endif %}>Weekdays</option>
+                    <option value="weekly" {% if repeat == 'weekly' %}selected{% endif %}>Weekly</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="repeat_until">Repeat until</label>
+            <input type="date" id="repeat_until" name="repeat_until" value="{{ repeat_until or '' }}">
         </div>
 
         <div class="reasoning">

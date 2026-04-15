@@ -1,0 +1,404 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.task-detail-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+.task-meta-card,
+.task-edit-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+}
+.task-kicker {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent-bright);
+    margin-bottom: 10px;
+}
+.task-header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.task-title {
+    font-size: 24px;
+    line-height: 1.15;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+}
+.status-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    border: 1px solid var(--border);
+}
+.status-chip.pending { color: var(--text-secondary); background: rgba(255,255,255,0.03); }
+.status-chip.in_progress { color: var(--accent-bright); background: var(--accent-glow); }
+.status-chip.waiting { color: var(--orange); background: var(--orange-glow); }
+.status-chip.blocked { color: var(--red); background: var(--red-glow); }
+.status-chip.completed { color: var(--green); background: var(--green-glow); }
+.task-description {
+    margin-top: 12px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.7;
+}
+.task-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 18px;
+}
+.task-meta-item {
+    padding: 12px 14px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+}
+.task-meta-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    font-weight: 700;
+}
+.task-meta-value {
+    margin-top: 5px;
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+}
+.task-form-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+.task-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 18px;
+}
+.task-actions .btn { width: 100%; }
+.subtask-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+}
+.subtask-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+.subtask-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 12px;
+}
+.subtask-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+.subtask-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.subtask-name {
+    font-size: 13px;
+    font-weight: 600;
+}
+.subtask-name.done {
+    color: var(--text-tertiary);
+    text-decoration: line-through;
+}
+.subtask-meta {
+    margin-top: 3px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+.subtask-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.subtask-create {
+    margin-top: 16px;
+}
+.detail-visual {
+    margin-bottom: 16px;
+}
+
+@media (min-width: 860px) {
+    .task-detail-layout {
+        grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+        align-items: start;
+    }
+    .task-meta-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .task-form-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .task-actions {
+        flex-direction: row;
+        justify-content: flex-end;
+    }
+    .task-actions .btn { width: auto; }
+}
+{% endblock %}
+
+{% block content %}
+<div class="flex-between fade-in" style="margin-bottom: 20px;">
+    <div>
+        <h1>Task Details</h1>
+        <p class="muted mt-xs">View and update this task in your timezone: {{ app_timezone_name }}</p>
+    </div>
+    <a href="/" class="btn btn-outline btn-sm">Dashboard</a>
+</div>
+
+<div class="visual-card detail-visual fade-in d1">
+    <img src="/static/art/schedule-meadow.svg" alt="Soft meadow artwork">
+    <div class="visual-card-copy">
+        <strong>One task, one clean next step.</strong>
+        <span>Use subtasks for the checklist, and use waiting or blocked only when the task truly cannot move today.</span>
+    </div>
+</div>
+
+<div class="task-detail-layout">
+    <div>
+    <div class="task-meta-card fade-in d1">
+        <div class="task-kicker">Task Overview</div>
+        <div class="task-header-row">
+            <div class="task-title">{{ task.title }}</div>
+            <span class="status-chip {{ task.status }}">{{ task.status.replace('_', ' ') }}</span>
+        </div>
+        <div class="task-description">
+            {{ task.description if task.description else "No description yet." }}
+        </div>
+
+        <div class="task-meta-grid">
+            <div class="task-meta-item">
+                <div class="task-meta-label">Project</div>
+                <div class="task-meta-value">
+                    {% if task.project_id and task.project_id in projects_by_id %}{{ projects_by_id.get(task.project_id).name }}{% else %}No project{% endif %}
+                </div>
+            </div>
+            <div class="task-meta-item">
+                <div class="task-meta-label">Tags</div>
+                <div class="task-meta-value">
+                    {% if task.tags_text %}{{ task.tags_text }}{% else %}No tags{% endif %}
+                </div>
+            </div>
+            <div class="task-meta-item">
+                <div class="task-meta-label">Start Date</div>
+                <div class="task-meta-value">
+                    {% if task.start_on %}{{ task.start_on.strftime('%b %d, %Y') }}{% else %}Available now{% endif %}
+                </div>
+            </div>
+            <div class="task-meta-item">
+                <div class="task-meta-label">Repeat</div>
+                <div class="task-meta-value">
+                    {{ task_repeat_labels.get(task.repeat, 'Does not repeat') }}
+                    {% if task.repeat_until %} until {{ task.repeat_until.strftime('%b %d, %Y') }}{% endif %}
+                </div>
+            </div>
+            <div class="task-meta-item">
+                <div class="task-meta-label">Priority</div>
+                <div class="task-meta-value">{{ priority_labels[task.priority] }} (P{{ task.priority }})</div>
+            </div>
+            <div class="task-meta-item">
+                <div class="task-meta-label">Deadline</div>
+                <div class="task-meta-value">
+                    {% if task.deadline %}{{ local_dt(task.deadline).strftime('%b %d, %Y %I:%M %p') }}{% else %}No deadline{% endif %}
+                </div>
+            </div>
+            <div class="task-meta-item">
+                <div class="task-meta-label">Estimated Completion</div>
+                <div class="task-meta-value">
+                    {% if task.estimated_completion %}{{ local_dt(task.estimated_completion).strftime('%b %d, %Y %I:%M %p') }}{% else %}Not set{% endif %}
+                </div>
+            </div>
+            <div class="task-meta-item">
+                <div class="task-meta-label">Created</div>
+                <div class="task-meta-value">{{ local_dt(task.created_at).strftime('%b %d, %Y %I:%M %p') }}</div>
+            </div>
+            {% if task.completed_at %}
+            <div class="task-meta-item">
+                <div class="task-meta-label">Completed</div>
+                <div class="task-meta-value">{{ local_dt(task.completed_at).strftime('%b %d, %Y %I:%M %p') }}</div>
+            </div>
+            {% endif %}
+            <div class="task-meta-item">
+                <div class="task-meta-label">Subtasks</div>
+                <div class="task-meta-value">{{ subtask_summary.completed }} / {{ subtask_summary.total }} completed</div>
+            </div>
+            <div class="task-meta-item">
+                <div class="task-meta-label">XP Earned</div>
+                <div class="task-meta-value">{{ task.xp_earned }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="subtask-card fade-in d2" style="margin-top: 16px;">
+        <div class="task-kicker">Subtasks</div>
+        <h2 style="margin-bottom: 0;">Checklist</h2>
+        <div class="subtask-summary">
+            <span>{{ subtask_summary.completed }} completed</span>
+            <span>&middot;</span>
+            <span>{{ subtask_summary.pending }} remaining</span>
+        </div>
+
+        {% if subtasks %}
+        <div class="subtask-list">
+            {% for subtask in subtasks %}
+            <div class="subtask-row">
+                <div>
+                    <div class="subtask-name {% if subtask.status == 'completed' %}done{% endif %}">{{ subtask.title }}</div>
+                    <div class="subtask-meta">
+                        {{ "Completed " ~ local_dt(subtask.completed_at).strftime('%b %d, %Y %I:%M %p') if subtask.completed_at else "Pending" }}
+                    </div>
+                </div>
+                <div class="subtask-actions">
+                    <form method="post" action="/subtasks/{{ subtask.id }}/toggle">
+                        {{ csrf_input(request) }}
+                        <button type="submit" class="btn btn-outline btn-sm">{{ "Reopen" if subtask.status == 'completed' else "Done" }}</button>
+                    </form>
+                    <form method="post" action="/subtasks/{{ subtask.id }}/delete">
+                        {{ csrf_input(request) }}
+                        <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty" style="padding: 24px 0 8px;">No subtasks yet. Break the task down into concrete moves.</div>
+        {% endif %}
+
+        <form method="post" action="/tasks/{{ task.id }}/subtasks/create" class="subtask-create">
+            {{ csrf_input(request) }}
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="subtask-title">Add subtask</label>
+                <input id="subtask-title" type="text" name="title" placeholder="e.g., Draft outline, send follow-up email..." required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 12px;">Add Subtask</button>
+        </form>
+    </div>
+    </div>
+
+    <div class="task-edit-card fade-in d2">
+        <div class="task-kicker">Edit Task</div>
+        <form method="post" action="/tasks/{{ task.id }}/update">
+            {{ csrf_input(request) }}
+            <div class="form-group">
+                <label for="title">Title</label>
+                <input type="text" id="title" name="title" value="{{ task.title }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="description">Description</label>
+                <textarea id="description" name="description">{{ task.description }}</textarea>
+            </div>
+
+            <div class="task-form-grid">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="project_id">Project</label>
+                    <select id="project_id" name="project_id">
+                        <option value="">No project</option>
+                        {% for project in projects %}
+                        <option value="{{ project.id }}" {% if task.project_id == project.id %}selected{% endif %}>{{ project.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="tags">Tags</label>
+                    <input type="text" id="tags" name="tags" value="{{ task.tags_text }}" placeholder="admin, writing, quick-win">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="start_on">Start date / defer until</label>
+                    <input type="date" id="start_on" name="start_on" value="{{ task.start_on.isoformat() if task.start_on else '' }}">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="priority">Priority</label>
+                    <select id="priority" name="priority">
+                        {% for value, label in priority_labels.items() %}
+                        <option value="{{ value }}" {% if task.priority == value %}selected{% endif %}>P{{ value }} · {{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="status">Status</label>
+                    {% if task.status == 'completed' %}
+                    <input type="hidden" name="status" value="completed">
+                    <input type="text" id="status" value="{{ task_status_labels.get(task.status) }}" disabled>
+                    {% else %}
+                    <select id="status" name="status">
+                        {% for value in ['pending', 'in_progress', 'waiting', 'blocked'] %}
+                        <option value="{{ value }}" {% if task.status == value %}selected{% endif %}>{{ task_status_labels.get(value) }}</option>
+                        {% endfor %}
+                    </select>
+                    {% endif %}
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="deadline">Deadline</label>
+                    <input type="date" id="deadline" name="deadline" value="{{ date_input_value(task.deadline) }}">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="estimated_completion">Estimated Completion</label>
+                    <input type="date" id="estimated_completion" name="estimated_completion" value="{{ date_input_value(task.estimated_completion) }}">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="repeat">Repeat</label>
+                    <select id="repeat" name="repeat">
+                        {% for value, label in task_repeat_labels.items() %}
+                        <option value="{{ value }}" {% if task.repeat == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="repeat_until">Repeat until</label>
+                    <input type="date" id="repeat_until" name="repeat_until" value="{{ task.repeat_until.isoformat() if task.repeat_until else '' }}">
+                </div>
+            </div>
+
+            <div class="task-actions">
+                {% if task.status == 'completed' %}
+                <a href="/tasks/completed" class="btn btn-outline">Back to Completed</a>
+                {% else %}
+                <a href="/" class="btn btn-outline">Back to Dashboard</a>
+                {% endif %}
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+        {% if task.status != 'completed' %}
+        <form method="post" action="/tasks/{{ task.id }}/complete" style="margin-top: 10px;">
+            {{ csrf_input(request) }}
+            <button type="submit" class="btn btn-success" style="width: 100%;">Mark Complete</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

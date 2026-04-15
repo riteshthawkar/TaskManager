@@ -15,12 +15,30 @@
     color: var(--text-secondary);
     font-weight: 500;
 }
+.schedule-nav {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+.schedule-range {
+    font-size: 12px;
+    color: var(--text-secondary);
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+}
 
 /* ── Layout ───────────────────── */
 .schedule-layout {
     display: flex;
     flex-direction: column;
     gap: 18px;
+}
+.schedule-visual {
+    margin: 0 0 18px;
 }
 
 /* ── Week Strip ───────────────── */
@@ -39,10 +57,19 @@
     transition: all 0.2s;
     position: relative;
 }
+.week-day-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
 .week-day.is-today {
     border-color: var(--accent);
     background: var(--accent-glow);
     box-shadow: 0 0 16px rgba(149,255,69,0.12);
+}
+.week-day.is-selected {
+    border-color: var(--accent-bright);
+    box-shadow: 0 0 0 1px rgba(196,255,138,0.22), 0 0 18px rgba(149,255,69,0.14);
 }
 .week-day-name {
     font-size: 9px;
@@ -282,6 +309,12 @@
     color: var(--text-secondary);
     margin-top: 3px;
 }
+.event-edit-note {
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+}
 
 /* ── Tablet+ ──────────────────── */
 @media (min-width: 720px) {
@@ -332,7 +365,13 @@
 <div class="schedule-header fade-in">
     <div>
         <h1>Schedule</h1>
-        <div class="today-label">{{ today.strftime('%A, %B %d, %Y') }}</div>
+        <div class="today-label">{{ selected_day.strftime('%A, %B %d, %Y') }}</div>
+        <div class="schedule-nav">
+            <a href="/schedule?week_start={{ prev_week_start.isoformat() }}&selected_date={{ prev_selected_day.isoformat() }}" class="btn btn-outline btn-sm">Previous Week</a>
+            <a href="/schedule?week_start={{ default_week_start.isoformat() }}&selected_date={{ today.isoformat() }}" class="btn btn-outline btn-sm">Current Week</a>
+            <a href="/schedule?week_start={{ next_week_start.isoformat() }}&selected_date={{ next_selected_day.isoformat() }}" class="btn btn-outline btn-sm">Next Week</a>
+            <span class="schedule-range">{{ week_start.strftime('%b %d') }} &ndash; {{ week_end.strftime('%b %d, %Y') }}</span>
+        </div>
     </div>
 </div>
 
@@ -340,16 +379,26 @@
 <div class="week-strip fade-in d1">
     {% set day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] %}
     {% for day in week_days %}
-    <div class="week-day {% if day.is_today %}is-today{% endif %}">
-        <div class="week-day-name">{{ day_names[loop.index0] }}</div>
-        <div class="week-day-num">{{ day.date.day }}</div>
-        <div class="week-day-dots">
-            {% for e in day.events[:3] %}
-            <div class="event-dot dot-{{ e.category }}"></div>
-            {% endfor %}
+    <a class="week-day-link" href="/schedule?week_start={{ week_start.isoformat() }}&selected_date={{ day.date.isoformat() }}">
+        <div class="week-day {% if day.is_today %}is-today{% endif %}{% if day.is_selected %} is-selected{% endif %}">
+            <div class="week-day-name">{{ day_names[loop.index0] }}</div>
+            <div class="week-day-num">{{ day.date.day }}</div>
+            <div class="week-day-dots">
+                {% for e in day.events[:3] %}
+                <div class="event-dot dot-{{ e.category }}"></div>
+                {% endfor %}
+            </div>
         </div>
-    </div>
+    </a>
     {% endfor %}
+</div>
+
+<div class="visual-card schedule-visual fade-in d1">
+    <img src="/static/art/schedule-meadow.svg" alt="Light meadow artwork">
+    <div class="visual-card-copy">
+        <strong>Make the calendar feel breathable.</strong>
+        <span>Edit events in place, keep the week visible, and leave enough white space for focus blocks to fit naturally.</span>
+    </div>
 </div>
 
 {% if pending_count > 0 %}
@@ -365,7 +414,7 @@
         <div class="timeline-section fade-in d2">
             <div class="timeline-title">
                 <div class="timeline-title-dot"></div>
-                Today's Events ({{ today_events | length }})
+                {{ "Today's Events" if selected_day == today else "Events on " ~ selected_day.strftime('%b %d, %Y') }} ({{ today_events | length }})
             </div>
 
             {% if today_events %}
@@ -388,14 +437,20 @@
                         </div>
                     </div>
                     <div class="event-actions">
+                        <a href="/schedule?week_start={{ week_start.isoformat() }}&selected_date={{ selected_day.isoformat() }}&edit_event_id={{ event.id }}" class="btn btn-outline btn-sm">Edit</a>
                         {% if event.repeat != 'none' or event.parent_event_id %}
+                        <a href="/schedule?week_start={{ week_start.isoformat() }}&selected_date={{ selected_day.isoformat() }}&edit_event_id={{ event.id }}&edit_scope=series" class="btn btn-outline btn-sm">Edit Series</a>
                         <form method="post" action="/events/{{ event.id }}/delete-series" style="display:inline;">
                             {{ csrf_input(request) }}
-                            <button type="submit" class="btn btn-outline btn-sm">Series</button>
+                            <input type="hidden" name="week_start" value="{{ week_start.isoformat() }}">
+                            <input type="hidden" name="selected_date" value="{{ selected_day.isoformat() }}">
+                            <button type="submit" class="btn btn-outline btn-sm">Delete Series</button>
                         </form>
                         {% endif %}
                         <form method="post" action="/events/{{ event.id }}/delete" style="display:inline;">
                             {{ csrf_input(request) }}
+                            <input type="hidden" name="week_start" value="{{ week_start.isoformat() }}">
+                            <input type="hidden" name="selected_date" value="{{ selected_day.isoformat() }}">
                             <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                         </form>
                     </div>
@@ -404,7 +459,7 @@
             {% else %}
                 <div class="empty-timeline">
                     <div class="empty-timeline-icon">&#128197;</div>
-                    <div>No events today. Add one below.</div>
+                    <div>No events on this date. Add one below.</div>
                 </div>
             {% endif %}
         </div>
@@ -431,76 +486,106 @@
 
         <!-- Add Event Form -->
         <div class="add-event-card fade-in d3">
-            <h2>Add Event</h2>
-            <form method="post" action="/events/add">
+            {% set form_event = editing_form_event or editing_event %}
+            <h2>
+                {% if editing_event and editing_scope == 'series' %}
+                Edit Series
+                {% elif editing_event %}
+                Edit Event
+                {% else %}
+                Add Event
+                {% endif %}
+            </h2>
+            <form method="post" action="{{ '/events/' ~ editing_event.id ~ '/update' if editing_event else '/events/add' }}">
                 {{ csrf_input(request) }}
+                <input type="hidden" name="week_start" value="{{ week_start.isoformat() }}">
+                <input type="hidden" name="selected_date" value="{{ selected_day.isoformat() }}">
+                {% if editing_event %}
+                <input type="hidden" name="scope" value="{{ editing_scope }}">
+                {% endif %}
                 <div class="form-group">
                     <label>Event Title</label>
-                    <input type="text" name="title" placeholder="Team standup, Lunch, Gym..." required>
+                    <input type="text" name="title" placeholder="Team standup, Lunch, Gym..." value="{{ form_event.title if form_event else '' }}" required>
                 </div>
 
                 <div class="form-row" style="margin-bottom: 12px;">
                     <div class="form-group" style="margin-bottom:0;">
                         <label>Date</label>
-                        <input type="date" name="event_date" value="{{ today.strftime('%Y-%m-%d') }}" required>
+                        <input type="date" name="event_date" value="{{ form_event.event_date.strftime('%Y-%m-%d') if form_event else selected_day.strftime('%Y-%m-%d') }}" required>
                     </div>
                     <div class="form-group" style="margin-bottom:0;">
                         <label>Description (optional)</label>
-                        <input type="text" name="description" placeholder="Brief note...">
+                        <input type="text" name="description" placeholder="Brief note..." value="{{ form_event.description if form_event else '' }}">
                     </div>
                 </div>
 
                 <div class="form-row" style="margin-bottom: 12px;">
                     <div class="form-group" style="margin-bottom:0;">
                         <label>Start Time</label>
-                        <input type="time" name="start_time" value="09:00" required>
+                        <input type="time" name="start_time" value="{{ form_event.start_time if form_event else '09:00' }}" required>
                     </div>
                     <div class="form-group" style="margin-bottom:0;">
                         <label>End Time</label>
-                        <input type="time" name="end_time" value="10:00" required>
+                        <input type="time" name="end_time" value="{{ form_event.end_time if form_event else '10:00' }}" required>
                     </div>
                 </div>
 
                 <div class="form-group">
                     <label>Category</label>
                     <div class="cat-picker">
-                        <input type="radio" name="category" value="meeting" id="cat-meeting" class="cat-option">
+                        <input type="radio" name="category" value="meeting" id="cat-meeting" class="cat-option" {% if form_event and form_event.category == 'meeting' %}checked{% endif %}>
                         <label for="cat-meeting" class="cat-label">Meeting</label>
-                        <input type="radio" name="category" value="work" id="cat-work" class="cat-option" checked>
+                        <input type="radio" name="category" value="work" id="cat-work" class="cat-option" {% if (form_event and form_event.category == 'work') or not form_event %}checked{% endif %}>
                         <label for="cat-work" class="cat-label">Work</label>
-                        <input type="radio" name="category" value="personal" id="cat-personal" class="cat-option">
+                        <input type="radio" name="category" value="personal" id="cat-personal" class="cat-option" {% if form_event and form_event.category == 'personal' %}checked{% endif %}>
                         <label for="cat-personal" class="cat-label">Personal</label>
-                        <input type="radio" name="category" value="break" id="cat-break" class="cat-option">
+                        <input type="radio" name="category" value="break" id="cat-break" class="cat-option" {% if form_event and form_event.category == 'break' %}checked{% endif %}>
                         <label for="cat-break" class="cat-label">Break</label>
-                        <input type="radio" name="category" value="general" id="cat-general" class="cat-option">
+                        <input type="radio" name="category" value="general" id="cat-general" class="cat-option" {% if form_event and form_event.category == 'general' %}checked{% endif %}>
                         <label for="cat-general" class="cat-label">General</label>
                     </div>
                 </div>
 
+                {% if editing_event and editing_scope == 'single' %}
+                <div class="event-edit-note">
+                    Editing updates this event only. Existing recurring series structure is left unchanged.
+                </div>
+                {% endif %}
+                {% if editing_scope == 'series' or not editing_event %}
                 <div class="form-row">
                     <div class="form-group" style="margin-bottom:0;">
                         <label>Repeat</label>
                         <select name="repeat" id="repeat-select">
-                            <option value="none">No repeat</option>
-                            <option value="daily">Daily</option>
-                            <option value="weekdays">Weekdays (Mon-Fri)</option>
-                            <option value="weekly">Weekly</option>
+                            <option value="none" {% if (form_event and form_event.repeat == 'none') or not form_event %}selected{% endif %}>No repeat</option>
+                            <option value="daily" {% if form_event and form_event.repeat == 'daily' %}selected{% endif %}>Daily</option>
+                            <option value="weekdays" {% if form_event and form_event.repeat == 'weekdays' %}selected{% endif %}>Weekdays (Mon-Fri)</option>
+                            <option value="weekly" {% if form_event and form_event.repeat == 'weekly' %}selected{% endif %}>Weekly</option>
                         </select>
                     </div>
                     <div class="form-group" id="repeat-until-group" style="display:none; margin-bottom:0;">
                         <label>Repeat Until</label>
-                        <input type="date" name="repeat_until" id="repeat-until">
+                        <input type="date" name="repeat_until" id="repeat-until" value="{{ form_event.repeat_until.strftime('%Y-%m-%d') if form_event and form_event.repeat_until else '' }}">
                     </div>
                 </div>
+                {% if editing_scope == 'series' %}
+                <div class="event-edit-note">
+                    Series editing rebuilds the future occurrences from the series start date and repeat pattern shown here.
+                </div>
+                {% endif %}
+                {% endif %}
 
                 <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Add Event</button>
+                    {% if editing_event %}
+                    <a href="/schedule?week_start={{ week_start.isoformat() }}&selected_date={{ selected_day.isoformat() }}" class="btn btn-outline">Cancel</a>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary">{{ "Save Changes" if editing_event else "Add Event" }}</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+{% if not editing_event or editing_scope == 'series' %}
 <script>
 (function () {
     var repeatSelect = document.getElementById('repeat-select');
@@ -524,4 +609,5 @@
     syncRepeatFields();
 })();
 </script>
+{% endif %}
 {% endblock %}

@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from app.database import SessionLocal
 from app.models import Task
 from app.llm import generate_motivation
+from app.time_utils import utc_naive_to_local, utc_now_naive
 
 load_dotenv()
 logger = logging.getLogger("taskmanager.notifications")
@@ -153,7 +154,8 @@ def send_email_via_resend(subject: str, html_body: str, text_body: str | None = 
 def format_deadline(deadline: datetime | None) -> str:
     if not deadline:
         return "No deadline"
-    return deadline.strftime("%A, %B %d, %Y at %I:%M %p").replace(" 0", " ")
+    local_deadline = utc_naive_to_local(deadline)
+    return local_deadline.strftime("%A, %B %d, %Y at %I:%M %p").replace(" 0", " ")
 
 
 def render_email_template(
@@ -372,7 +374,7 @@ def check_and_send_notifications() -> dict:
         "sent_overdue": 0,
     }
     try:
-        now = datetime.utcnow()
+        now = utc_now_naive()
         pending_tasks = db.query(Task).filter(
             Task.status.in_(["pending", "in_progress"]),
             Task.deadline.isnot(None),
@@ -389,7 +391,8 @@ def check_and_send_notifications() -> dict:
 
         for task in pending_tasks:
             time_until = task.deadline - now
-            nearest = task.deadline.strftime("%Y-%m-%d %H:%M") if task.deadline else "None"
+            nearest_local = utc_naive_to_local(task.deadline) if task.deadline else None
+            nearest = nearest_local.strftime("%Y-%m-%d %H:%M") if nearest_local else "None"
 
             # Overdue
             if not task.overdue_sent and time_until <= timedelta(hours=0):

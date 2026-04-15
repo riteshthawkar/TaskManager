@@ -22,6 +22,8 @@ services:
         sync: false
       - key: SESSION_HTTPS_ONLY
         value: "true"
+      - key: APP_TIMEZONE
+        value: "Asia/Kolkata"
       - key: DATABASE_URL
         sync: false
       - key: OPENAI_API_KEY

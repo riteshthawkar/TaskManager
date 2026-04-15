@@ -6,22 +6,48 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 
+class Project(Base):
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
 class Task(Base):
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
+    project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=True)
+    tags_text: Mapped[str] = mapped_column(Text, default="")
+    start_on: Mapped[date] = mapped_column(Date, nullable=True)
     priority: Mapped[int] = mapped_column(Integer, default=3)  # 1 (low) to 5 (critical)
     deadline: Mapped[datetime] = mapped_column(DateTime, nullable=True)  # user's desired deadline
     estimated_completion: Mapped[datetime] = mapped_column(DateTime, nullable=True)  # LLM's estimate
-    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, in_progress, completed
+    repeat: Mapped[str] = mapped_column(String(20), default="none")  # none, daily, weekdays, weekly
+    repeat_until: Mapped[date] = mapped_column(Date, nullable=True)
+    parent_task_id: Mapped[int] = mapped_column(Integer, nullable=True)  # links to original recurring task
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, in_progress, waiting, blocked, completed
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     xp_earned: Mapped[int] = mapped_column(Integer, default=0)
     reminder_24h_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     reminder_2h_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     overdue_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Subtask(Base):
+    __tablename__ = "subtasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("tasks.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, completed
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
 
 class UserStats(Base):

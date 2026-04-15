@@ -1,6 +1,6 @@
 # TaskManager Roadmap
 
-This roadmap is ordered by user impact and implementation risk. Phase 1 is implemented in the current worktree.
+This roadmap is ordered by user impact and implementation risk. Phase 1 is implemented, and the core of Phase 2 is now in progress in the current worktree.
 
 ## Phase 1: Daily Planning Loop
 
@@ -22,10 +22,11 @@ Acceptance criteria:
 
 Goal: support larger and more realistic workloads.
 
-- Projects with grouped tasks.
-- Subtasks and progress tracking.
-- Recurring tasks and habits.
-- Richer task states such as blocked or waiting.
+- Projects with grouped tasks. Implemented.
+- Tags, start dates, and a "later" queue. Implemented.
+- Recurring tasks and habits. Implemented for date-based recurring tasks.
+- Subtasks and progress tracking. Pending.
+- Richer task states such as blocked or waiting. Pending.
 
 Acceptance criteria:
 

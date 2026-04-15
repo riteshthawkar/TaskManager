@@ -242,6 +242,14 @@
     <a href="/" class="btn btn-outline btn-sm">Dashboard</a>
 </div>
 
+<div class="visual-card fade-in d1" style="margin-bottom: 14px;">
+    <img src="/static/art/focus-garden.svg" alt="Calm focus garden artwork">
+    <div class="visual-card-copy">
+        <strong>Focus works best when the task is actually ready.</strong>
+        <span>Waiting and blocked tasks stay out of this list so your session starts with something you can genuinely move forward.</span>
+    </div>
+</div>
+
 <div class="dw-stats">
     <div class="dw-stat fade-in d1">
         <div class="dw-stat-val" style="color: var(--green);">{{ stats.deep_work_sessions_completed }}</div>
@@ -313,7 +321,7 @@
                     <select id="task_id" name="task_id">
                         <option value="0">General Focus (no specific task)</option>
                         {% for task in tasks %}
-                        <option value="{{ task.id }}">[P{{ task.priority }}] {{ task.title }}{% if task.deadline %} &mdash; due {{ task.deadline.strftime('%b %d') }}{% endif %}</option>
+                        <option value="{{ task.id }}">[P{{ task.priority }}] {{ task.title }}{% if task.deadline %} &mdash; due {{ local_dt(task.deadline).strftime('%b %d') }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -365,7 +373,7 @@
                     <div class="s-name">{{ item.task_title }}</div>
                     <div class="s-meta">
                         {{ item.session.actual_duration }}min &middot;
-                        {{ item.session.started_at.strftime('%b %d, %I:%M %p') }}
+                        {{ local_dt(item.session.started_at).strftime('%b %d, %I:%M %p') }}
                         {% if item.session.notes %} &middot; {{ item.session.notes[:40] }}{% endif %}
                     </div>
                 </div>
