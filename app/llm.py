@@ -61,6 +61,8 @@ The user wants to add a new task. Your job:
 2. Ask 0-3 short clarifying questions, but ONLY if something material is unclear from the description. If the task is already clear enough, return an empty questions array.
 3. Suggest a realistic priority (1=low to 5=critical) and deadline based on BOTH the task description AND the user's actual track record.
 4. Estimate how long the task will ACTUALLY take to complete (estimated_completion_date). This should be your honest assessment based on complexity and history — it may be earlier than the deadline for easy tasks, or you may flag if the task seems too complex for the given deadline.
+5. Suggest a lightweight breakdown of 0-5 concrete next steps if the task is big enough to benefit from it.
+6. Provide a deadline_confidence of `high`, `medium`, or `low` based on how certain you are about the proposed timing.
 
 COMPLETED TASK HISTORY:
 {history}
@@ -95,6 +97,8 @@ Respond in this exact JSON format:
     "suggested_priority": 3,
     "suggested_deadline": "YYYY-MM-DDTHH:MM",
     "estimated_completion_date": "YYYY-MM-DDTHH:MM",
+    "deadline_confidence": "medium",
+    "suggested_breakdown": ["step 1", "step 2"],
     "reasoning": "Explain your reasoning, referencing their history and schedule if relevant"
 }}"""
 
@@ -126,6 +130,8 @@ Respond in this exact JSON format:
     "suggested_priority": 3,
     "suggested_deadline": "YYYY-MM-DDTHH:MM",
     "estimated_completion_date": "YYYY-MM-DDTHH:MM",
+    "deadline_confidence": "medium",
+    "suggested_breakdown": ["step 1", "step 2"],
     "reasoning": "Refined reasoning based on clarifications"
 }}"""
 
@@ -135,7 +141,9 @@ def _build_context_blocks(history, pending, schedule):
     history_block = _build_history_block(history or [])
     pending_block = json.dumps(
         [{"title": t["title"], "priority": t["priority"],
-          "deadline": t.get("deadline"), "status": t["status"]}
+          "deadline": t.get("deadline"), "deadline_confidence": t.get("deadline_confidence"),
+          "planned_for_date": t.get("planned_for_date"), "start_on": t.get("start_on"),
+          "status": t["status"]}
          for t in (pending or [])],
         default=str,
     ) if pending else "No pending tasks."
@@ -177,11 +185,37 @@ def _normalize_questions(value) -> list[str]:
     return questions
 
 
+def _normalize_breakdown(value) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    steps = []
+    seen = set()
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        cleaned = item.strip()
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        steps.append(cleaned[:200])
+        if len(steps) == 5:
+            break
+    return steps
+
+
 def _normalize_priority(value, fallback: int = 3) -> int:
     try:
         return max(1, min(5, int(value)))
     except (TypeError, ValueError):
         return fallback
+
+
+def _normalize_confidence(value, fallback: str = "medium") -> str:
+    cleaned = str(value or fallback).strip().lower()
+    return cleaned if cleaned in {"high", "medium", "low"} else fallback
 
 
 def analyze_task(title: str, description: str, history: list = None,
@@ -224,6 +258,8 @@ def analyze_task(title: str, description: str, history: list = None,
             "suggested_priority": _normalize_priority(result.get("suggested_priority", 3)),
             "suggested_deadline": suggested_deadline,
             "estimated_completion_date": estimated_completion,
+            "deadline_confidence": _normalize_confidence(result.get("deadline_confidence")),
+            "suggested_breakdown": _normalize_breakdown(result.get("suggested_breakdown")),
             "reasoning": str(result.get("reasoning", "")),
         }
     except Exception:
@@ -233,6 +269,8 @@ def analyze_task(title: str, description: str, history: list = None,
             "suggested_priority": 3,
             "suggested_deadline": suggested_deadline,
             "estimated_completion_date": suggested_deadline,
+            "deadline_confidence": "medium",
+            "suggested_breakdown": [],
             "reasoning": "AI analysis is temporarily unavailable, so default suggestions were used.",
         }
 
@@ -283,6 +321,8 @@ def followup_analyze(title: str, description: str, questions: list, answers: lis
             "suggested_priority": _normalize_priority(result.get("suggested_priority", 3)),
             "suggested_deadline": suggested_deadline,
             "estimated_completion_date": estimated_completion,
+            "deadline_confidence": _normalize_confidence(result.get("deadline_confidence")),
+            "suggested_breakdown": _normalize_breakdown(result.get("suggested_breakdown")),
             "reasoning": str(result.get("reasoning", "")),
         }
     except Exception:
@@ -291,6 +331,8 @@ def followup_analyze(title: str, description: str, questions: list, answers: lis
             "suggested_priority": 3,
             "suggested_deadline": suggested_deadline,
             "estimated_completion_date": suggested_deadline,
+            "deadline_confidence": "medium",
+            "suggested_breakdown": [],
             "reasoning": "AI refinement is temporarily unavailable, so default suggestions were used.",
         }
 

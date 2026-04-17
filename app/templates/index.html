@@ -247,6 +247,41 @@
     border-color: rgba(149,255,69,0.18);
     background: rgba(149,255,69,0.10);
 }
+.task-chip.conf-high {
+    color: var(--green);
+    border-color: rgba(48,255,133,0.18);
+    background: rgba(48,255,133,0.10);
+}
+.task-chip.conf-medium {
+    color: var(--orange);
+    border-color: rgba(255,184,0,0.16);
+    background: rgba(255,184,0,0.10);
+}
+.task-chip.conf-low {
+    color: var(--red);
+    border-color: rgba(255,77,106,0.16);
+    background: rgba(255,77,106,0.10);
+}
+.subtask-progress {
+    margin-top: 8px;
+}
+.subtask-progress-track {
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden;
+}
+.subtask-progress-bar {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 12px rgba(149,255,69,0.20);
+}
+.subtask-progress-copy {
+    margin-top: 5px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
 .warn { color: var(--orange); font-weight: 600; }
 .urgent { color: var(--red); font-weight: 600; }
 .done-row { opacity: 0.35; }
@@ -355,6 +390,36 @@
     font-weight: 500;
     margin-bottom: 14px;
 }
+.dashboard-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.quick-plan-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.quick-plan-row form {
+    flex: 1 1 120px;
+}
+.quick-plan-row .btn {
+    width: 100%;
+}
+.plan-task-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+.plan-task-actions form {
+    flex: 1 1 96px;
+}
+.plan-task-actions .btn {
+    width: 100%;
+}
 
 /* ── Tablet ───────────────── */
 @media (min-width: 720px) {
@@ -405,6 +470,10 @@
 
 {% block content %}
 <div class="dashboard-shell">
+    <div class="dashboard-toolbar fade-in">
+        <a href="/review" class="btn btn-outline btn-sm">Weekly Review</a>
+        <a href="/settings" class="btn btn-outline btn-sm">Settings</a>
+    </div>
 
     <!-- Motivation -->
     <div class="motivation fade-in">
@@ -496,6 +565,7 @@
                                 {% if task.repeat != 'none' %}
                                 <span class="task-chip">{{ task_repeat_labels.get(task.repeat) }}</span>
                                 {% endif %}
+                                <span class="task-chip conf-{{ task.deadline_confidence or 'medium' }}">Confidence {{ (task.deadline_confidence or 'medium').title() }}</span>
                                 {% if task.status != 'pending' %}
                                 <span class="task-chip status-{{ task.status }}">{{ task_status_labels.get(task.status) }}</span>
                                 {% endif %}
@@ -539,6 +609,18 @@
                             {% endif %}
                             {% if subtask_summary.get(task.id, {}).get('total', 0) %}
                             <div class="task-note">{{ subtask_summary.get(task.id, {}).get('completed', 0) }} / {{ subtask_summary.get(task.id, {}).get('total', 0) }} subtasks complete</div>
+                            <div class="subtask-progress">
+                                {% set progress_total = subtask_summary.get(task.id, {}).get('total', 0) %}
+                                {% set progress_done = subtask_summary.get(task.id, {}).get('completed', 0) %}
+                                {% set progress_pct = ((progress_done / progress_total) * 100) if progress_total else 0 %}
+                                <div class="subtask-progress-track">
+                                    <div class="subtask-progress-bar" style="width: {{ '%.0f'|format(progress_pct) }}%;"></div>
+                                </div>
+                                <div class="subtask-progress-copy">{{ '%.0f'|format(progress_pct) }}% checklist progress</div>
+                            </div>
+                            {% endif %}
+                            {% if task.planned_for_date %}
+                            <div class="task-note">Planned for {{ task.planned_for_date.strftime('%b %d, %Y') }}</div>
                             {% endif %}
                         </div>
                         <div class="task-btns">
@@ -548,6 +630,12 @@
                                 <button type="submit" class="btn btn-outline btn-sm">Start</button>
                             </form>
                             {% endif %}
+                            <form method="post" action="/tasks/{{ task.id }}/plan-date">
+                                {{ csrf_input(request) }}
+                                <input type="hidden" name="next_path" value="/">
+                                <input type="hidden" name="action" value="{{ 'clear' if task.planned_for_date == today else 'today' }}">
+                                <button type="submit" class="btn btn-outline btn-sm">{{ 'Clear Plan' if task.planned_for_date == today else 'Plan Today' }}</button>
+                            </form>
                             <form method="post" action="/tasks/{{ task.id }}/plan-focus">
                                 {{ csrf_input(request) }}
                                 <button type="submit" class="btn btn-outline btn-sm">Plan {{ focus_duration_for_task(task) }}m</button>
@@ -620,20 +708,23 @@
             <div class="card today-plan fade-in d3">
                 <div class="flex-between mb-md">
                     <h2 style="margin-bottom:0;">Today Queue</h2>
-                    <a href="/schedule" class="btn btn-outline btn-sm">Schedule</a>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <a href="/review" class="btn btn-outline btn-sm">Review</a>
+                        <a href="/schedule" class="btn btn-outline btn-sm">Schedule</a>
+                    </div>
                 </div>
                 <div class="plan-metrics">
                     <div class="plan-metric">
-                        <div class="plan-metric-value" style="color: var(--accent);">{{ today_queue_count }}</div>
-                        <div class="plan-metric-label">Ready</div>
+                        <div class="plan-metric-value" style="color: var(--accent);">{{ planned_today_count }}</div>
+                        <div class="plan-metric-label">Planned</div>
+                    </div>
+                    <div class="plan-metric">
+                        <div class="plan-metric-value" style="color: var(--green);">{{ settings.daily_top_task_target }}</div>
+                        <div class="plan-metric-label">Target</div>
                     </div>
                     <div class="plan-metric">
                         <div class="plan-metric-value" style="color: var(--red);">{{ overdue_tasks_count }}</div>
                         <div class="plan-metric-label">Overdue</div>
-                    </div>
-                    <div class="plan-metric">
-                        <div class="plan-metric-value" style="color: var(--green);">{{ later_tasks_count }}</div>
-                        <div class="plan-metric-label">Later</div>
                     </div>
                 </div>
                 {% if next_focus_slot_label %}
@@ -648,16 +739,25 @@
                             <div class="plan-task-meta">
                                 P{{ task.priority }}
                                 {% if task.project_id and task.project_id in projects_by_id %} &middot; {{ projects_by_id.get(task.project_id).name }}{% endif %}
+                                {% if task.planned_for_date %} &middot; planned {{ task.planned_for_date.strftime('%b %d') }}{% endif %}
                                 {% if task.deadline %} &middot; due {{ local_dt(task.deadline).strftime('%b %d, %I:%M %p') }}{% endif %}
                                 {% if task.estimated_completion %} &middot; estimated {{ local_dt(task.estimated_completion).strftime('%b %d, %I:%M %p') }}{% endif %}
                                 {% if task.tags_text %} &middot; {{ task.tags_text }}{% endif %}
                                 {% if subtask_summary.get(task.id, {}).get('total', 0) %} &middot; {{ subtask_summary.get(task.id, {}).get('completed', 0) }}/{{ subtask_summary.get(task.id, {}).get('total', 0) }} subtasks{% endif %}
                             </div>
                         </div>
-                        <form method="post" action="/tasks/{{ task.id }}/plan-focus">
-                            {{ csrf_input(request) }}
-                            <button type="submit" class="btn btn-outline btn-sm">Plan</button>
-                        </form>
+                        <div class="plan-task-actions">
+                            <form method="post" action="/tasks/{{ task.id }}/plan-date">
+                                {{ csrf_input(request) }}
+                                <input type="hidden" name="next_path" value="/">
+                                <input type="hidden" name="action" value="{{ 'tomorrow' if task.planned_for_date == today else 'today' }}">
+                                <button type="submit" class="btn btn-outline btn-sm">{{ 'Tomorrow' if task.planned_for_date == today else 'Today' }}</button>
+                            </form>
+                            <form method="post" action="/tasks/{{ task.id }}/plan-focus">
+                                {{ csrf_input(request) }}
+                                <button type="submit" class="btn btn-outline btn-sm">Focus</button>
+                            </form>
+                        </div>
                     </div>
                     {% endfor %}
                 </div>

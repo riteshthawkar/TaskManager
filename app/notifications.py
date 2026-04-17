@@ -13,9 +13,15 @@ from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 
 from app.database import SessionLocal
-from app.models import Task
+from app.models import Task, UserSettings, PushSubscription
 from app.llm import generate_motivation
 from app.time_utils import utc_naive_to_local, utc_now_naive
+
+try:
+    from pywebpush import webpush, WebPushException
+except Exception:  # pragma: no cover - optional dependency guard
+    webpush = None
+    WebPushException = Exception
 
 load_dotenv()
 logger = logging.getLogger("taskmanager.notifications")
@@ -31,6 +37,9 @@ EMAIL_FROM = os.getenv("EMAIL_FROM", "").strip()
 EMAIL_REPLY_TO = os.getenv("EMAIL_REPLY_TO", "").strip()
 NOTIFY_EMAIL = os.getenv("NOTIFY_EMAIL", "").strip()
 EMAIL_API_TIMEOUT_MS = int(os.getenv("EMAIL_API_TIMEOUT_MS", "20000"))
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "").strip()
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "").strip()
+VAPID_CLAIMS_SUBJECT = os.getenv("VAPID_CLAIMS_SUBJECT", "mailto:taskmanager@example.com").strip()
 
 
 def current_email_provider() -> str:
@@ -62,6 +71,21 @@ def email_config_issues() -> list[str]:
         issues.append(f"Unsupported EMAIL_PROVIDER: {provider}")
     if not NOTIFY_EMAIL:
         issues.append("NOTIFY_EMAIL missing")
+    return issues
+
+
+def push_notifications_enabled() -> bool:
+    return bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY and webpush is not None)
+
+
+def push_config_issues() -> list[str]:
+    issues = []
+    if not VAPID_PUBLIC_KEY:
+        issues.append("VAPID_PUBLIC_KEY missing")
+    if not VAPID_PRIVATE_KEY:
+        issues.append("VAPID_PRIVATE_KEY missing")
+    if webpush is None:
+        issues.append("pywebpush dependency missing")
     return issues
 
 
@@ -149,6 +173,55 @@ def send_email_via_resend(subject: str, html_body: str, text_body: str | None = 
     except Exception as e:
         logger.exception("Resend email send failed. Subject=%s Error=%s", subject, e)
         return False
+
+
+def send_push_message(title: str, body: str, url: str = "/", db: Session | None = None) -> int:
+    if not push_notifications_enabled():
+        logger.warning("Push notification send skipped (%s).", ", ".join(push_config_issues()))
+        return 0
+
+    owns_session = db is None
+    if db is None:
+        db = SessionLocal()
+
+    delivered = 0
+    try:
+        subscriptions = db.query(PushSubscription).filter(PushSubscription.enabled.is_(True)).all()
+        for subscription in subscriptions:
+            payload = json.dumps({
+                "title": title,
+                "body": body,
+                "url": url,
+            })
+            try:
+                webpush(
+                    subscription_info={
+                        "endpoint": subscription.endpoint,
+                        "keys": {
+                            "p256dh": subscription.p256dh,
+                            "auth": subscription.auth,
+                        },
+                    },
+                    data=payload,
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims={"sub": VAPID_CLAIMS_SUBJECT},
+                )
+                subscription.last_used_at = utc_now_naive()
+                delivered += 1
+            except WebPushException as exc:
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                logger.warning("Push delivery failed for endpoint %s status=%s", subscription.endpoint[:80], status_code)
+                if status_code in {404, 410}:
+                    subscription.enabled = False
+            except Exception as exc:
+                logger.warning("Push delivery failed for endpoint %s error=%s", subscription.endpoint[:80], exc)
+    finally:
+        if owns_session:
+            db.commit()
+            db.close()
+        else:
+            db.flush()
+    return delivered
 
 
 def format_deadline(deadline: datetime | None) -> str:
@@ -298,7 +371,7 @@ def render_email_template(
     return html, "\n".join(text_lines)
 
 
-def build_task_email(task: Task, alert_type: str, motivation: str) -> tuple[str, str]:
+def build_task_email(task: Task, alert_type: str, motivation: str, window_hours: int | None = None) -> tuple[str, str]:
     """Build a consistent TaskManager email for reminders and alerts."""
     priority_labels = {1: "Low", 2: "Medium-Low", 3: "Medium", 4: "High", 5: "Critical"}
     priority_colors = {1: "#30ff85", 2: "#63ffaf", 3: "#ffe566", 4: "#ffb800", 5: "#ff4d6a"}
@@ -315,7 +388,7 @@ def build_task_email(task: Task, alert_type: str, motivation: str) -> tuple[str,
             "highlight_label": "Due",
             "accent_color": "#95ff45",
             "accent_glow": "rgba(149,255,69,0.35)",
-            "footer": "You are receiving this because reminder checks are enabled for your TaskManager account.",
+            "footer": f"You are receiving this because reminder checks are enabled for your TaskManager account. This reminder is sent inside your {window_hours or 24}-hour planning window.",
         },
         "urgent": {
             "eyebrow": "Urgent deadline",
@@ -324,7 +397,7 @@ def build_task_email(task: Task, alert_type: str, motivation: str) -> tuple[str,
             "highlight_label": "Due soon",
             "accent_color": "#ffb800",
             "accent_glow": "rgba(255,184,0,0.35)",
-            "footer": "Urgent reminders are sent when a task enters its final two-hour window.",
+            "footer": f"Urgent reminders are sent when a task enters its final {window_hours or 2}-hour window.",
         },
         "overdue": {
             "eyebrow": "Deadline missed",
@@ -369,11 +442,22 @@ def check_and_send_notifications() -> dict:
     db: Session = SessionLocal()
     summary = {
         "tasks_scanned": 0,
-        "sent_24h": 0,
-        "sent_2h": 0,
+        "day_window_hours": 24,
+        "final_window_hours": 2,
+        "sent_day_window": 0,
+        "sent_final_window": 0,
         "sent_overdue": 0,
+        "push_sent": 0,
     }
     try:
+        settings = db.query(UserSettings).first()
+        day_window_hours = max(1, min(getattr(settings, "reminder_day_hours", 24), 168))
+        final_window_hours = max(1, min(getattr(settings, "reminder_final_hours", 2), 24))
+        if final_window_hours >= day_window_hours:
+            final_window_hours = max(1, min(day_window_hours - 1, 24))
+        summary["day_window_hours"] = day_window_hours
+        summary["final_window_hours"] = final_window_hours
+
         now = utc_now_naive()
         pending_tasks = db.query(Task).filter(
             Task.status.in_(["pending", "in_progress"]),
@@ -401,27 +485,46 @@ def check_and_send_notifications() -> dict:
                 if send_email(f"OVERDUE: '{task.title}' has passed its deadline!", html_body, text_body):
                     task.overdue_sent = True
                     summary["sent_overdue"] += 1
+                summary["push_sent"] += send_push_message("Task overdue", f'"{task.title}" has passed its deadline.', url=f"/tasks/{task.id}", db=db)
 
             # 2-hour urgent
-            elif not task.reminder_2h_sent and timedelta(hours=0) < time_until <= timedelta(hours=2):
+            elif not task.reminder_2h_sent and timedelta(hours=0) < time_until <= timedelta(hours=final_window_hours):
                 motivation = generate_motivation(total_xp, streak, completed, pending_count, nearest)
-                html_body, text_body = build_task_email(task, "urgent", motivation)
-                if send_email(f"URGENT: '{task.title}' is due in 2 hours!", html_body, text_body):
+                html_body, text_body = build_task_email(task, "urgent", motivation, window_hours=final_window_hours)
+                if send_email(f"URGENT: '{task.title}' is due within {final_window_hours} hour{'s' if final_window_hours != 1 else ''}", html_body, text_body):
                     task.reminder_2h_sent = True
-                    summary["sent_2h"] += 1
+                    summary["sent_final_window"] += 1
+                summary["push_sent"] += send_push_message(
+                    "Task due soon",
+                    f'"{task.title}" is due within {final_window_hours} hour{"s" if final_window_hours != 1 else ""}.',
+                    url=f"/tasks/{task.id}",
+                    db=db,
+                )
 
-            # 24-hour reminder
-            elif not task.reminder_24h_sent and timedelta(hours=0) < time_until <= timedelta(hours=24):
+            # broader reminder
+            elif not task.reminder_24h_sent and timedelta(hours=0) < time_until <= timedelta(hours=day_window_hours):
                 motivation = generate_motivation(total_xp, streak, completed, pending_count, nearest)
-                html_body, text_body = build_task_email(task, "reminder", motivation)
-                if send_email(f"Reminder: '{task.title}' is due within 24 hours", html_body, text_body):
+                html_body, text_body = build_task_email(task, "reminder", motivation, window_hours=day_window_hours)
+                if send_email(f"Reminder: '{task.title}' is due within {day_window_hours} hour{'s' if day_window_hours != 1 else ''}", html_body, text_body):
                     task.reminder_24h_sent = True
-                    summary["sent_24h"] += 1
+                    summary["sent_day_window"] += 1
+                summary["push_sent"] += send_push_message(
+                    "Upcoming deadline",
+                    f'"{task.title}" is due within {day_window_hours} hour{"s" if day_window_hours != 1 else ""}.',
+                    url=f"/tasks/{task.id}",
+                    db=db,
+                )
 
         db.commit()
         logger.info(
-            "Notification scan complete: scanned=%s sent_24h=%s sent_2h=%s sent_overdue=%s",
-            summary["tasks_scanned"], summary["sent_24h"], summary["sent_2h"], summary["sent_overdue"],
+            "Notification scan complete: scanned=%s sent_day_window=%s sent_final_window=%s sent_overdue=%s push_sent=%s windows=(%sh,%sh)",
+            summary["tasks_scanned"],
+            summary["sent_day_window"],
+            summary["sent_final_window"],
+            summary["sent_overdue"],
+            summary["push_sent"],
+            summary["day_window_hours"],
+            summary["final_window_hours"],
         )
     except Exception as e:
         logger.exception("[NOTIFICATION ERROR] %s", e)

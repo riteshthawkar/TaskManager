@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.review-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+.review-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.review-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+.review-stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    box-shadow: var(--shadow-sm);
+}
+.review-stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    font-weight: 700;
+}
+.review-stat-value {
+    margin-top: 6px;
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+}
+.review-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+.review-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+}
+.review-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+.review-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+.review-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.review-item-title {
+    font-size: 14px;
+    font-weight: 700;
+}
+.review-item-meta {
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.55;
+}
+.review-item-side {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-align: right;
+}
+.review-empty {
+    padding: 18px 0 4px;
+    font-size: 13px;
+    color: var(--text-tertiary);
+}
+@media (min-width: 860px) {
+    .review-summary {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .review-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+{% endblock %}
+
+{% block content %}
+<div class="flex-between fade-in" style="margin-bottom: 18px;">
+    <div>
+        <h1>Weekly Review</h1>
+        <p class="muted mt-xs">{{ week_start.strftime('%b %d') }} - {{ week_end.strftime('%b %d, %Y') }}</p>
+    </div>
+    <a href="/" class="btn btn-outline btn-sm">Dashboard</a>
+</div>
+
+<div class="visual-card fade-in d1" style="margin-bottom: 18px;">
+    <img src="/static/art/dashboard-canopy.svg" alt="Canopy artwork">
+    <div class="visual-card-copy">
+        <strong>Review the week like an operator.</strong>
+        <span>Look for patterns: what finished on time, what stayed blocked, and where your attention actually went.</span>
+    </div>
+</div>
+
+<div class="review-shell">
+    <div class="review-toolbar fade-in d2">
+        <a href="/review?week_start={{ prev_week_start.isoformat() }}" class="btn btn-outline btn-sm">Previous Week</a>
+        <a href="/review?week_start={{ next_week_start.isoformat() }}" class="btn btn-outline btn-sm">Next Week</a>
+        <a href="/review" class="btn btn-outline btn-sm">Current Week</a>
+        <a href="/settings" class="btn btn-outline btn-sm">Settings</a>
+    </div>
+
+    <div class="review-summary fade-in d2">
+        <div class="review-stat">
+            <div class="review-stat-label">Completed</div>
+            <div class="review-stat-value" style="color: var(--accent);">{{ completed_this_week|length }}</div>
+        </div>
+        <div class="review-stat">
+            <div class="review-stat-label">On Time</div>
+            <div class="review-stat-value" style="color: var(--green);">{{ on_time_rate }}%</div>
+        </div>
+        <div class="review-stat">
+            <div class="review-stat-label">Focus Minutes</div>
+            <div class="review-stat-value" style="color: var(--orange);">{{ weekly_focus_minutes }}</div>
+        </div>
+        <div class="review-stat">
+            <div class="review-stat-label">Held Tasks</div>
+            <div class="review-stat-value" style="color: var(--red);">{{ blocked_tasks|length }}</div>
+        </div>
+    </div>
+
+    <div class="review-grid">
+        <div class="review-card fade-in d3">
+            <div class="section-header">
+                <div class="section-dot" style="background: var(--green);"></div>
+                <h2 style="margin-bottom: 0;">Completed On Time</h2>
+            </div>
+            {% if completed_on_time %}
+            <div class="review-list">
+                {% for task in completed_on_time %}
+                <div class="review-item">
+                    <div>
+                        <div class="review-item-title">{{ task.title }}</div>
+                        <div class="review-item-meta">
+                            {% if task.project_id and task.project_id in projects_by_id %}{{ projects_by_id.get(task.project_id).name }} &middot; {% endif %}
+                            due {{ local_dt(task.deadline).strftime('%b %d, %I:%M %p') }}
+                        </div>
+                    </div>
+                    <div class="review-item-side">+{{ task.xp_earned }} XP</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="review-empty">No on-time completions in this window.</div>
+            {% endif %}
+        </div>
+
+        <div class="review-card fade-in d3">
+            <div class="section-header">
+                <div class="section-dot" style="background: var(--orange);"></div>
+                <h2 style="margin-bottom: 0;">Completed Late</h2>
+            </div>
+            {% if completed_late %}
+            <div class="review-list">
+                {% for task in completed_late %}
+                <div class="review-item">
+                    <div>
+                        <div class="review-item-title">{{ task.title }}</div>
+                        <div class="review-item-meta">
+                            {% if task.deadline %}due {{ local_dt(task.deadline).strftime('%b %d, %I:%M %p') }} &middot; {% endif %}
+                            completed {{ local_dt(task.completed_at).strftime('%b %d, %I:%M %p') }}
+                        </div>
+                    </div>
+                    <div class="review-item-side">Late</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="review-empty">Nothing completed late this week.</div>
+            {% endif %}
+        </div>
+
+        <div class="review-card fade-in d4">
+            <div class="section-header">
+                <div class="section-dot" style="background: var(--accent);"></div>
+                <h2 style="margin-bottom: 0;">Carryover / Open This Week</h2>
+            </div>
+            {% if carried_tasks %}
+            <div class="review-list">
+                {% for task in carried_tasks %}
+                <div class="review-item">
+                    <div>
+                        <div class="review-item-title">{{ task.title }}</div>
+                        <div class="review-item-meta">
+                            {{ task_status_labels.get(task.status) }}
+                            {% if task.planned_for_date %} &middot; planned {{ task.planned_for_date.strftime('%b %d') }}{% endif %}
+                            {% if task.deadline %} &middot; due {{ local_dt(task.deadline).strftime('%b %d, %I:%M %p') }}{% endif %}
+                        </div>
+                    </div>
+                    <div class="review-item-side">
+                        <a href="/tasks/{{ task.id }}" class="btn btn-outline btn-sm">Open</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="review-empty">No open tasks were planned or due in this window.</div>
+            {% endif %}
+        </div>
+
+        <div class="review-card fade-in d4">
+            <div class="section-header">
+                <div class="section-dot" style="background: var(--red);"></div>
+                <h2 style="margin-bottom: 0;">Blocked / Waiting</h2>
+            </div>
+            {% if blocked_tasks %}
+            <div class="review-list">
+                {% for task in blocked_tasks %}
+                <div class="review-item">
+                    <div>
+                        <div class="review-item-title">{{ task.title }}</div>
+                        <div class="review-item-meta">
+                            {{ task_status_labels.get(task.status) }}
+                            {% if task.project_id and task.project_id in projects_by_id %} &middot; {{ projects_by_id.get(task.project_id).name }}{% endif %}
+                            {% if task.deadline %} &middot; due {{ local_dt(task.deadline).strftime('%b %d, %I:%M %p') }}{% endif %}
+                        </div>
+                    </div>
+                    <div class="review-item-side">
+                        <a href="/tasks/{{ task.id }}" class="btn btn-outline btn-sm">Open</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="review-empty">No tasks are blocked or waiting right now.</div>
+            {% endif %}
+        </div>
+
+        <div class="review-card fade-in d5">
+            <div class="section-header">
+                <div class="section-dot" style="background: var(--cyan);"></div>
+                <h2 style="margin-bottom: 0;">Focus Sessions</h2>
+            </div>
+            {% if weekly_sessions %}
+            <div class="review-list">
+                {% for session in weekly_sessions %}
+                <div class="review-item">
+                    <div>
+                        <div class="review-item-title">{{ (session.actual_duration or session.planned_duration or 0) }} minutes</div>
+                        <div class="review-item-meta">
+                            ended {{ local_dt(session.ended_at).strftime('%b %d, %I:%M %p') }}
+                            {% if session.notes %} &middot; {{ session.notes[:60] }}{% if session.notes|length > 60 %}...{% endif %}{% endif %}
+                        </div>
+                    </div>
+                    <div class="review-item-side">+{{ session.xp_earned }} XP</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="review-empty">No completed focus sessions in this week yet.</div>
+            {% endif %}
+        </div>
+
+        <div class="review-card fade-in d5">
+            <div class="section-header">
+                <div class="section-dot" style="background: var(--purple);"></div>
+                <h2 style="margin-bottom: 0;">Completed Without Deadlines</h2>
+            </div>
+            {% if completed_without_deadline %}
+            <div class="review-list">
+                {% for task in completed_without_deadline %}
+                <div class="review-item">
+                    <div>
+                        <div class="review-item-title">{{ task.title }}</div>
+                        <div class="review-item-meta">
+                            completed {{ local_dt(task.completed_at).strftime('%b %d, %I:%M %p') }}
+                            {% if task.project_id and task.project_id in projects_by_id %} &middot; {{ projects_by_id.get(task.project_id).name }}{% endif %}
+                        </div>
+                    </div>
+                    <div class="review-item-side">No due date</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="review-empty">Every completed task this week had a deadline attached.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

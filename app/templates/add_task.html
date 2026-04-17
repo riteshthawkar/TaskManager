@@ -131,6 +131,59 @@
     margin-top: 12px;
     box-shadow: 0 0 12px rgba(48,255,133,0.06);
 }
+.confidence-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 12px;
+    border: 1px solid var(--border);
+}
+.confidence-badge.high {
+    background: var(--green-glow);
+    color: var(--green);
+    border-color: rgba(48,255,133,0.18);
+}
+.confidence-badge.medium {
+    background: var(--orange-glow);
+    color: var(--orange);
+    border-color: rgba(255,184,0,0.18);
+}
+.confidence-badge.low {
+    background: var(--red-glow);
+    color: var(--red);
+    border-color: rgba(255,77,106,0.18);
+}
+.breakdown-card {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+}
+.breakdown-card ul {
+    margin-top: 10px;
+    padding-left: 18px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.7;
+}
+.breakdown-toggle {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.breakdown-toggle input {
+    width: auto;
+}
 
 /* ── Form Layouts ────────────── */
 .two-col {
@@ -309,6 +362,19 @@
             {% endif %}
         </div>
         {% endif %}
+        <div class="confidence-badge {{ analysis.deadline_confidence or 'medium' }}">
+            Deadline confidence: {{ (analysis.deadline_confidence or 'medium').title() }}
+        </div>
+        {% if analysis.suggested_breakdown %}
+        <div class="breakdown-card">
+            <strong>Suggested next steps</strong>
+            <ul>
+                {% for step in analysis.suggested_breakdown %}
+                <li>{{ step }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
 
         <div class="form-btns">
             <button type="submit" class="btn btn-primary btn-lg">Refine with Answers</button>
@@ -327,6 +393,13 @@
         <input type="hidden" name="priority" value="{{ analysis.suggested_priority }}">
         <input type="hidden" name="deadline" value="{{ analysis.suggested_deadline }}">
         <input type="hidden" name="estimated_completion" value="{{ analysis.estimated_completion_date or '' }}">
+        <input type="hidden" name="deadline_confidence" value="{{ analysis.deadline_confidence or 'medium' }}">
+        {% for step in analysis.suggested_breakdown or [] %}
+        <input type="hidden" name="breakdown_{{ loop.index0 }}" value="{{ step }}">
+        {% endfor %}
+        {% if analysis.suggested_breakdown %}
+        <input type="hidden" name="create_breakdown_subtasks" value="yes">
+        {% endif %}
         <input type="hidden" name="repeat" value="{{ repeat or 'none' }}">
         <input type="hidden" name="repeat_until" value="{{ repeat_until or '' }}">
         <button type="submit" class="skip-link" style="background:none; border:none; cursor:pointer; font-family:inherit; width:100%;">
@@ -368,6 +441,14 @@
                 <label for="estimated_completion">Estimated Completion</label>
                 <input type="datetime-local" id="estimated_completion" name="estimated_completion" value="{{ analysis.estimated_completion_date or '' }}">
             </div>
+            <div class="form-group">
+                <label for="deadline_confidence">Deadline Confidence</label>
+                <select id="deadline_confidence" name="deadline_confidence">
+                    <option value="high" {% if (analysis.deadline_confidence or 'medium') == 'high' %}selected{% endif %}>High</option>
+                    <option value="medium" {% if (analysis.deadline_confidence or 'medium') == 'medium' %}selected{% endif %}>Medium</option>
+                    <option value="low" {% if (analysis.deadline_confidence or 'medium') == 'low' %}selected{% endif %}>Low</option>
+                </select>
+            </div>
         </div>
         <div class="two-col">
             <div class="form-group" style="margin-bottom: 0;">
@@ -405,6 +486,21 @@
         <div class="reasoning">
             <strong>Reasoning:</strong> {{ analysis.reasoning }}
         </div>
+        {% if analysis.suggested_breakdown %}
+        <div class="breakdown-card">
+            <strong>Suggested breakdown</strong>
+            <ul>
+                {% for step in analysis.suggested_breakdown %}
+                <li>{{ step }}</li>
+                <input type="hidden" name="breakdown_{{ loop.index0 }}" value="{{ step }}">
+                {% endfor %}
+            </ul>
+        </div>
+        <label class="breakdown-toggle">
+            <input type="checkbox" name="create_breakdown_subtasks" value="yes" checked>
+            <span>Create these as subtasks automatically</span>
+        </label>
+        {% endif %}
 
         <div class="form-btns">
             <button type="submit" class="btn btn-primary btn-lg">Add Task</button>

@@ -93,6 +93,18 @@
     margin-top: 18px;
 }
 .task-actions .btn { width: 100%; }
+.plan-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 14px;
+}
+.plan-controls form {
+    min-width: 0;
+}
+.plan-controls .btn {
+    width: 100%;
+}
 .subtask-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -107,6 +119,94 @@
     margin-top: 8px;
     font-size: 12px;
     color: var(--text-secondary);
+}
+.subtask-progress {
+    margin-top: 10px;
+}
+.subtask-progress-track {
+    height: 7px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden;
+}
+.subtask-progress-bar {
+    height: 100%;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 12px rgba(149,255,69,0.22);
+}
+.subtask-progress-copy {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+.confidence-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-top: 8px;
+    border: 1px solid var(--border);
+}
+.confidence-chip.high {
+    color: var(--green);
+    background: var(--green-glow);
+    border-color: rgba(48,255,133,0.18);
+}
+.confidence-chip.medium {
+    color: var(--orange);
+    background: var(--orange-glow);
+    border-color: rgba(255,184,0,0.16);
+}
+.confidence-chip.low {
+    color: var(--red);
+    background: var(--red-glow);
+    border-color: rgba(255,77,106,0.16);
+}
+.task-notes-card,
+.task-activity-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+    margin-top: 16px;
+}
+.note-list,
+.activity-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 12px;
+}
+.note-row,
+.activity-row {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+}
+.note-row:last-child,
+.activity-row:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+.note-copy,
+.activity-copy {
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text-secondary);
+}
+.note-meta,
+.activity-meta {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+.note-actions {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
 }
 .subtask-list {
     display: flex;
@@ -226,6 +326,12 @@
                 </div>
             </div>
             <div class="task-meta-item">
+                <div class="task-meta-label">Planned For</div>
+                <div class="task-meta-value">
+                    {% if task.planned_for_date %}{{ task.planned_for_date.strftime('%b %d, %Y') }}{% else %}Not pinned to a planning day{% endif %}
+                </div>
+            </div>
+            <div class="task-meta-item">
                 <div class="task-meta-label">Priority</div>
                 <div class="task-meta-value">{{ priority_labels[task.priority] }} (P{{ task.priority }})</div>
             </div>
@@ -239,6 +345,7 @@
                 <div class="task-meta-label">Estimated Completion</div>
                 <div class="task-meta-value">
                     {% if task.estimated_completion %}{{ local_dt(task.estimated_completion).strftime('%b %d, %Y %I:%M %p') }}{% else %}Not set{% endif %}
+                    <div><span class="confidence-chip {{ task.deadline_confidence or 'medium' }}">Confidence {{ (task.deadline_confidence or 'medium').title() }}</span></div>
                 </div>
             </div>
             <div class="task-meta-item">
@@ -269,6 +376,15 @@
             <span>{{ subtask_summary.completed }} completed</span>
             <span>&middot;</span>
             <span>{{ subtask_summary.pending }} remaining</span>
+        </div>
+        {% set progress_total = subtask_summary.total %}
+        {% set progress_done = subtask_summary.completed %}
+        {% set progress_pct = ((progress_done / progress_total) * 100) if progress_total else 0 %}
+        <div class="subtask-progress">
+            <div class="subtask-progress-track">
+                <div class="subtask-progress-bar" style="width: {{ '%.0f'|format(progress_pct) }}%;"></div>
+            </div>
+            <div class="subtask-progress-copy">{{ '%.0f'|format(progress_pct) }}% complete</div>
         </div>
 
         {% if subtasks %}
@@ -307,10 +423,93 @@
             <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 12px;">Add Subtask</button>
         </form>
     </div>
+
+    <div class="task-notes-card fade-in d3">
+        <div class="task-kicker">Notes</div>
+        <h2 style="margin-bottom: 0;">Task Notes</h2>
+        <p class="muted mt-xs">Keep lightweight context, links, or next-thought reminders here.</p>
+
+        <form method="post" action="/tasks/{{ task.id }}/notes/create" style="margin-top: 14px;">
+            {{ csrf_input(request) }}
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="note-content">Add note</label>
+                <textarea id="note-content" name="content" placeholder="Capture context, decisions, or blockers..." style="min-height: 110px;" required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 12px;">Add Note</button>
+        </form>
+
+        {% if notes %}
+        <div class="note-list">
+            {% for note in notes %}
+            <div class="note-row">
+                <div class="note-copy">{{ note.content }}</div>
+                <div class="note-meta">{{ local_dt(note.created_at).strftime('%b %d, %Y %I:%M %p') }}</div>
+                <div class="note-actions">
+                    <form method="post" action="/task-notes/{{ note.id }}/delete">
+                        {{ csrf_input(request) }}
+                        <button type="submit" class="btn btn-danger btn-sm">Delete Note</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty" style="padding: 20px 0 0;">No notes yet.</div>
+        {% endif %}
+    </div>
+
+    <div class="task-activity-card fade-in d3">
+        <div class="task-kicker">Activity</div>
+        <h2 style="margin-bottom: 0;">Recent History</h2>
+        {% if activities %}
+        <div class="activity-list">
+            {% for activity in activities %}
+            <div class="activity-row">
+                <div class="activity-copy">{{ activity.message }}</div>
+                <div class="activity-meta">{{ local_dt(activity.created_at).strftime('%b %d, %Y %I:%M %p') }} &middot; {{ activity.activity_type.replace('_', ' ')|title }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty" style="padding: 20px 0 0;">No recorded activity yet.</div>
+        {% endif %}
+    </div>
     </div>
 
     <div class="task-edit-card fade-in d2">
-        <div class="task-kicker">Edit Task</div>
+        {% if task.status != 'completed' %}
+        <div class="task-kicker">Plan This Task</div>
+        <h2 style="margin-bottom: 0;">Daily Queue</h2>
+        <p class="muted mt-xs">Use a planning date to intentionally pull this task into today or later.</p>
+        <div class="plan-controls">
+            <form method="post" action="/tasks/{{ task.id }}/plan-date">
+                {{ csrf_input(request) }}
+                <input type="hidden" name="next_path" value="/tasks/{{ task.id }}">
+                <input type="hidden" name="action" value="today">
+                <button type="submit" class="btn btn-outline btn-sm">Plan Today</button>
+            </form>
+            <form method="post" action="/tasks/{{ task.id }}/plan-date">
+                {{ csrf_input(request) }}
+                <input type="hidden" name="next_path" value="/tasks/{{ task.id }}">
+                <input type="hidden" name="action" value="tomorrow">
+                <button type="submit" class="btn btn-outline btn-sm">Plan Tomorrow</button>
+            </form>
+            <form method="post" action="/tasks/{{ task.id }}/plan-date">
+                {{ csrf_input(request) }}
+                <input type="hidden" name="next_path" value="/tasks/{{ task.id }}">
+                <input type="hidden" name="action" value="next_week">
+                <button type="submit" class="btn btn-outline btn-sm">Next Week</button>
+            </form>
+            <form method="post" action="/tasks/{{ task.id }}/plan-date">
+                {{ csrf_input(request) }}
+                <input type="hidden" name="next_path" value="/tasks/{{ task.id }}">
+                <input type="hidden" name="action" value="clear">
+                <button type="submit" class="btn btn-outline btn-sm">Clear Plan</button>
+            </form>
+        </div>
+        {% endif %}
+
+        <div class="task-kicker" style="margin-top: {% if task.status != 'completed' %}22px{% else %}0{% endif %};">Edit Task</div>
         <form method="post" action="/tasks/{{ task.id }}/update">
             {{ csrf_input(request) }}
             <div class="form-group">
@@ -369,6 +568,14 @@
                 <div class="form-group" style="margin-bottom: 0;">
                     <label for="estimated_completion">Estimated Completion</label>
                     <input type="datetime-local" id="estimated_completion" name="estimated_completion" value="{{ datetime_input_value(task.estimated_completion) }}">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="deadline_confidence">Deadline Confidence</label>
+                    <select id="deadline_confidence" name="deadline_confidence">
+                        <option value="high" {% if (task.deadline_confidence or 'medium') == 'high' %}selected{% endif %}>High</option>
+                        <option value="medium" {% if (task.deadline_confidence or 'medium') == 'medium' %}selected{% endif %}>Medium</option>
+                        <option value="low" {% if (task.deadline_confidence or 'medium') == 'low' %}selected{% endif %}>Low</option>
+                    </select>
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                     <label for="repeat">Repeat</label>

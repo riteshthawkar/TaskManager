@@ -22,6 +22,16 @@
     gap: 8px;
     margin-top: 12px;
 }
+.schedule-jump {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+}
+.schedule-jump input {
+    max-width: 190px;
+}
 .schedule-range {
     font-size: 12px;
     color: var(--text-secondary);
@@ -372,6 +382,11 @@
             <a href="/schedule?week_start={{ next_week_start.isoformat() }}&selected_date={{ next_selected_day.isoformat() }}" class="btn btn-outline btn-sm">Next Week</a>
             <span class="schedule-range">{{ week_start.strftime('%b %d') }} &ndash; {{ week_end.strftime('%b %d, %Y') }}</span>
         </div>
+        <form method="get" action="/schedule" class="schedule-jump">
+            <label for="jump-date" style="margin-bottom: 0;">Jump to date</label>
+            <input id="jump-date" type="date" name="jump_date" value="{{ selected_day.isoformat() }}">
+            <button type="submit" class="btn btn-outline btn-sm">Go</button>
+        </form>
     </div>
 </div>
 
@@ -437,6 +452,20 @@
                         </div>
                     </div>
                     <div class="event-actions">
+                        <form method="post" action="/events/{{ event.id }}/shift" style="display:inline;">
+                            {{ csrf_input(request) }}
+                            <input type="hidden" name="shift_days" value="1">
+                            <input type="hidden" name="week_start" value="{{ week_start.isoformat() }}">
+                            <input type="hidden" name="selected_date" value="{{ selected_day.isoformat() }}">
+                            <button type="submit" class="btn btn-outline btn-sm">+1 Day</button>
+                        </form>
+                        <form method="post" action="/events/{{ event.id }}/shift" style="display:inline;">
+                            {{ csrf_input(request) }}
+                            <input type="hidden" name="shift_days" value="7">
+                            <input type="hidden" name="week_start" value="{{ week_start.isoformat() }}">
+                            <input type="hidden" name="selected_date" value="{{ selected_day.isoformat() }}">
+                            <button type="submit" class="btn btn-outline btn-sm">+1 Week</button>
+                        </form>
                         <a href="/schedule?week_start={{ week_start.isoformat() }}&selected_date={{ selected_day.isoformat() }}&edit_event_id={{ event.id }}" class="btn btn-outline btn-sm">Edit</a>
                         {% if event.repeat != 'none' or event.parent_event_id %}
                         <a href="/schedule?week_start={{ week_start.isoformat() }}&selected_date={{ selected_day.isoformat() }}&edit_event_id={{ event.id }}&edit_scope=series" class="btn btn-outline btn-sm">Edit Series</a>
@@ -472,6 +501,7 @@
             <div class="focus-hint-copy">
                 {{ next_focus_slot.date.strftime('%a, %b %d') }} &middot; {{ next_focus_slot.start_time.strftime('%I:%M %p').lstrip('0') }} - {{ next_focus_slot.end_time.strftime('%I:%M %p').lstrip('0') }}
             </div>
+            <div class="event-edit-note">Uses your {{ settings.default_focus_minutes }} minute default focus block inside your configured workday.</div>
         </div>
         {% endif %}
 

@@ -8,3 +8,4 @@ openai>=2.0.0
 apscheduler==3.10.4
 python-dotenv==1.0.1
 psycopg2-binary==2.9.11
+pywebpush==2.0.3

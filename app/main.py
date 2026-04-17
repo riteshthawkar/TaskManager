@@ -2,13 +2,14 @@ from __future__ import annotations
 import os
 import secrets
 import logging
+import json
 from pathlib import Path
 from datetime import datetime, date, time, timedelta
 from contextlib import asynccontextmanager
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request, Depends, Form
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
@@ -18,9 +19,27 @@ from starlette.middleware.sessions import SessionMiddleware
 from markupsafe import Markup, escape
 
 from app.database import get_db, ensure_schema_compatibility, SessionLocal, engine
-from app.models import Project, Task, Subtask, UserStats, DeepWorkSession, Event
+from app.models import (
+    Project,
+    Task,
+    Subtask,
+    TaskNote,
+    TaskActivity,
+    PushSubscription,
+    UserStats,
+    UserSettings,
+    DeepWorkSession,
+    Event,
+)
 from app.llm import analyze_task, followup_analyze, generate_motivation, suggest_deep_work
-from app.notifications import check_and_send_notifications, email_config_issues, current_email_provider
+from app.notifications import (
+    check_and_send_notifications,
+    email_config_issues,
+    current_email_provider,
+    push_config_issues,
+    push_notifications_enabled,
+    send_push_message,
+)
 from app.time_utils import (
     APP_TIMEZONE_NAME,
     local_today,
@@ -114,6 +133,15 @@ def ensure_user_stats_row() -> None:
         db.close()
 
 
+def ensure_user_settings_row() -> None:
+    db = SessionLocal()
+    try:
+        get_settings(db)
+        logger.info("UserSettings ready")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -123,10 +151,14 @@ async def lifespan(app: FastAPI):
         if applied_migrations:
             logger.info("Applied schema updates: %s", ", ".join(applied_migrations))
         ensure_user_stats_row()
+        ensure_user_settings_row()
         logger.info("Email provider: %s", current_email_provider())
         email_issues = email_config_issues()
         if email_issues:
             logger.warning("Email reminders are not fully configured: %s", ", ".join(email_issues))
+        push_issues = push_config_issues()
+        if push_issues:
+            logger.warning("Push notifications are not fully configured: %s", ", ".join(push_issues))
         if ENABLE_SCHEDULER:
             scheduler.start()
             logger.info("Scheduler started (notifications every %s minutes)", NOTIFICATION_CHECK_MINUTES)
@@ -160,6 +192,10 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 def is_safe_redirect_target(target: str | None) -> bool:
     return bool(target) and target.startswith("/") and not target.startswith("//")
+
+
+def safe_redirect_target(target: str | None, fallback: str = "/") -> str:
+    return target if is_safe_redirect_target(target) else fallback
 
 
 def login_redirect_url(request: Request) -> str:
@@ -285,6 +321,12 @@ TASK_REPEAT_LABELS = {
 }
 WORKDAY_START = time(8, 0)
 WORKDAY_END = time(20, 0)
+DEFAULT_WORKDAY_START = "08:00"
+DEFAULT_WORKDAY_END = "20:00"
+DEFAULT_FOCUS_MINUTES = 50
+DEFAULT_DAILY_TOP_TARGET = 3
+DEFAULT_REMINDER_DAY_HOURS = 24
+DEFAULT_REMINDER_FINAL_HOURS = 2
 FOCUS_EVENT_PREFIX = "Focus:"
 FOCUS_EVENT_MARKER = "[focus-task:"
 
@@ -297,6 +339,40 @@ def get_stats(db: Session) -> UserStats:
         db.commit()
         db.refresh(stats)
     return stats
+
+
+def get_settings(db: Session) -> UserSettings:
+    settings = db.query(UserSettings).first()
+    if not settings:
+        settings = UserSettings(
+            workday_start=DEFAULT_WORKDAY_START,
+            workday_end=DEFAULT_WORKDAY_END,
+            default_focus_minutes=DEFAULT_FOCUS_MINUTES,
+            daily_top_task_target=DEFAULT_DAILY_TOP_TARGET,
+            reminder_day_hours=DEFAULT_REMINDER_DAY_HOURS,
+            reminder_final_hours=DEFAULT_REMINDER_FINAL_HOURS,
+        )
+        db.add(settings)
+        db.commit()
+        db.refresh(settings)
+    return settings
+
+
+def parse_settings_clock(value: str, fallback: time) -> time:
+    try:
+        return parse_clock(value)
+    except Exception:
+        return fallback
+
+
+def get_workday_bounds(settings: UserSettings | None) -> tuple[time, time]:
+    if not settings:
+        return WORKDAY_START, WORKDAY_END
+    start = parse_settings_clock(settings.workday_start, WORKDAY_START)
+    end = parse_settings_clock(settings.workday_end, WORKDAY_END)
+    if time_to_minutes(end) <= time_to_minutes(start):
+        return WORKDAY_START, WORKDAY_END
+    return start, end
 
 
 def parse_date_input(value: str) -> datetime | None:
@@ -327,6 +403,25 @@ def parse_tags_text(value: str | None) -> list[str]:
 
 def normalize_tags_text(value: str | None) -> str:
     return ", ".join(parse_tags_text(value))
+
+
+def normalize_deadline_confidence(value: str | None) -> str:
+    cleaned = (value or "medium").strip().lower()
+    return cleaned if cleaned in {"high", "medium", "low"} else "medium"
+
+
+def extract_breakdown_items_from_form(form) -> list[str]:
+    breakdown: list[str] = []
+    index = 0
+    while True:
+        value = form.get(f"breakdown_{index}")
+        if value is None:
+            break
+        cleaned = str(value).strip()
+        if cleaned:
+            breakdown.append(cleaned[:200])
+        index += 1
+    return breakdown[:8]
 
 
 templates.env.globals["task_tags"] = parse_tags_text
@@ -385,6 +480,7 @@ def task_is_ready(task: Task, today: date) -> bool:
 
 def task_sort_key(task: Task, today: date, now: datetime) -> tuple:
     ready_rank = 0 if task_is_ready(task, today) else 1
+    planned_rank = 0 if task.planned_for_date == today else 1
     status_rank = {
         "in_progress": 0,
         "pending": 1,
@@ -396,15 +492,22 @@ def task_sort_key(task: Task, today: date, now: datetime) -> tuple:
     deadline_rank = task.deadline or datetime.max
     start_rank = task.start_on or date.max
     priority_rank = -task.priority
-    return (ready_rank, status_rank, overdue_rank, deadline_rank, start_rank, priority_rank, task.created_at)
+    return (ready_rank, planned_rank, status_rank, overdue_rank, deadline_rank, start_rank, priority_rank, task.created_at)
 
 
-def build_today_queue(tasks: list[Task], today: date, now: datetime) -> list[Task]:
+def build_today_queue(tasks: list[Task], today: date, now: datetime, settings: UserSettings | None = None) -> list[Task]:
     ready_tasks = [
         task for task in tasks
         if task.status in TASK_QUEUE_STATUSES and task_is_ready(task, today)
     ]
-    return sorted(ready_tasks, key=lambda task: task_sort_key(task, today, now))
+    sorted_tasks = sorted(ready_tasks, key=lambda task: task_sort_key(task, today, now))
+    limit = settings.daily_top_task_target if settings else DEFAULT_DAILY_TOP_TARGET
+    limit = max(1, min(limit, 8))
+    explicitly_planned = [task for task in sorted_tasks if task.planned_for_date == today]
+    if len(explicitly_planned) >= limit:
+        return explicitly_planned
+    remaining = [task for task in sorted_tasks if task.planned_for_date != today]
+    return explicitly_planned + remaining[: max(0, limit - len(explicitly_planned))]
 
 
 def build_attention_queue(tasks: list[Task], today: date, now: datetime) -> list[Task]:
@@ -437,6 +540,66 @@ def get_subtask_summary(db: Session, task_ids: list[int]) -> dict[int, dict[str,
         else:
             bucket["pending"] += 1
     return summary
+
+
+def get_notes_for_task(db: Session, task_id: int) -> list[TaskNote]:
+    return db.query(TaskNote).filter(TaskNote.task_id == task_id).order_by(TaskNote.created_at.desc(), TaskNote.id.desc()).all()
+
+
+def get_activity_for_task(db: Session, task_id: int, limit: int = 40) -> list[TaskActivity]:
+    return db.query(TaskActivity).filter(TaskActivity.task_id == task_id).order_by(TaskActivity.created_at.desc(), TaskActivity.id.desc()).limit(limit).all()
+
+
+def add_task_activity(db: Session, task_id: int, activity_type: str, message: str) -> None:
+    db.add(TaskActivity(task_id=task_id, activity_type=activity_type, message=message[:600]))
+
+
+def _display_project_name(db: Session, project_id: int | None) -> str:
+    if not project_id:
+        return "No project"
+    project = db.query(Project).filter(Project.id == project_id).first()
+    return project.name if project else "No project"
+
+
+def _display_local_datetime(value: datetime | None) -> str:
+    if not value:
+        return "Not set"
+    return utc_naive_to_local(value).strftime("%b %d, %Y %I:%M %p")
+
+
+def _display_date(value: date | None) -> str:
+    return value.strftime("%b %d, %Y") if value else "Not set"
+
+
+def build_task_update_summary(db: Session, before: dict, task: Task) -> str | None:
+    changes: list[str] = []
+    if before["title"] != task.title:
+        changes.append(f'title: "{before["title"]}" -> "{task.title}"')
+    if before["description"] != task.description:
+        changes.append("description updated")
+    if before["project_id"] != task.project_id:
+        changes.append(f'project: {_display_project_name(db, before["project_id"])} -> {_display_project_name(db, task.project_id)}')
+    if before["tags_text"] != task.tags_text:
+        changes.append(f'tags: "{before["tags_text"] or "none"}" -> "{task.tags_text or "none"}"')
+    if before["start_on"] != task.start_on:
+        changes.append(f"start date: {_display_date(before['start_on'])} -> {_display_date(task.start_on)}")
+    if before["planned_for_date"] != task.planned_for_date:
+        changes.append(f"planned date: {_display_date(before['planned_for_date'])} -> {_display_date(task.planned_for_date)}")
+    if before["priority"] != task.priority:
+        changes.append(f"priority: P{before['priority']} -> P{task.priority}")
+    if before["deadline"] != task.deadline:
+        changes.append(f"deadline: {_display_local_datetime(before['deadline'])} -> {_display_local_datetime(task.deadline)}")
+    if before["estimated_completion"] != task.estimated_completion:
+        changes.append(f"estimated completion: {_display_local_datetime(before['estimated_completion'])} -> {_display_local_datetime(task.estimated_completion)}")
+    if before["deadline_confidence"] != task.deadline_confidence:
+        changes.append(f"confidence: {before['deadline_confidence']} -> {task.deadline_confidence}")
+    if before["status"] != task.status:
+        changes.append(f"status: {TASK_STATUS_LABELS.get(before['status'], before['status'])} -> {TASK_STATUS_LABELS.get(task.status, task.status)}")
+    if before["repeat"] != task.repeat or before["repeat_until"] != task.repeat_until:
+        changes.append("recurrence updated")
+    if not changes:
+        return None
+    return "Updated task details: " + "; ".join(changes[:6])
 
 
 def task_recurrence_anchor(deadline: datetime | None, estimated_completion: datetime | None, start_on: date | None) -> date | None:
@@ -521,10 +684,11 @@ def minutes_to_time(total_minutes: int) -> time:
     return time(total_minutes // 60, total_minutes % 60)
 
 
-def round_up_to_quarter(current: time) -> time:
+def round_up_to_quarter(current: time, latest: time | None = None) -> time:
     minutes = time_to_minutes(current)
     rounded = ((minutes + 14) // 15) * 15
-    return minutes_to_time(min(rounded, time_to_minutes(WORKDAY_END)))
+    upper = latest or WORKDAY_END
+    return minutes_to_time(min(rounded, time_to_minutes(upper)))
 
 
 def format_clock(value: time | str) -> str:
@@ -541,12 +705,14 @@ def focus_marker_for_task(task_id: int) -> str:
     return f"{FOCUS_EVENT_MARKER}{task_id}]"
 
 
-def focus_duration_for_task(task: Task) -> int:
+def focus_duration_for_task(task: Task, settings: UserSettings | None = None) -> int:
+    default_minutes = settings.default_focus_minutes if settings else DEFAULT_FOCUS_MINUTES
+    default_minutes = max(25, min(default_minutes, 180))
     if task.priority >= 5:
-        return 90
+        return max(default_minutes, 90)
     if task.priority >= 3:
-        return 50
-    return 25
+        return default_minutes
+    return min(default_minutes, 25)
 
 
 def task_target_date(task: Task) -> date | None:
@@ -607,20 +773,22 @@ def find_next_focus_slot(
     duration_minutes: int,
     latest_date: date | None = None,
     days_ahead: int = 7,
+    settings: UserSettings | None = None,
 ) -> dict | None:
     today = local_today()
+    workday_start, workday_end = get_workday_bounds(settings)
     search_end = today + timedelta(days=days_ahead)
     if latest_date:
         search_end = min(search_end, max(latest_date, today))
 
     for offset in range((search_end - today).days + 1):
         target_date = today + timedelta(days=offset)
-        start_boundary = WORKDAY_START
+        start_boundary = workday_start
         if target_date == today:
-            start_boundary = max(WORKDAY_START, round_up_to_quarter(local_now().time()))
+            start_boundary = max(workday_start, round_up_to_quarter(local_now().time(), latest=workday_end))
 
         cursor = time_to_minutes(start_boundary)
-        end_of_day = time_to_minutes(WORKDAY_END)
+        end_of_day = time_to_minutes(workday_end)
         if cursor + duration_minutes > end_of_day:
             continue
 
@@ -702,7 +870,9 @@ def get_task_history(db: Session, limit: int = 30) -> list:
             "subtasks_completed": subtask_summary.get(t.id, {}).get("completed", 0),
             "subtasks_total": subtask_summary.get(t.id, {}).get("total", 0),
             "start_on": t.start_on.isoformat() if t.start_on else None,
+            "planned_for_date": t.planned_for_date.isoformat() if t.planned_for_date else None,
             "deadline": utc_naive_to_local(t.deadline).strftime("%Y-%m-%d %H:%M") if t.deadline else None,
+            "deadline_confidence": t.deadline_confidence,
             "created_at": utc_naive_to_local(t.created_at).strftime("%Y-%m-%d %H:%M") if t.created_at else None,
             "completed_at": utc_naive_to_local(t.completed_at).strftime("%Y-%m-%d %H:%M") if t.completed_at else None,
             "duration_days": duration_days,
@@ -726,8 +896,10 @@ def get_pending_tasks_data(db: Session) -> list:
             "subtasks_completed": subtask_summary.get(t.id, {}).get("completed", 0),
             "subtasks_total": subtask_summary.get(t.id, {}).get("total", 0),
             "start_on": t.start_on.isoformat() if t.start_on else None,
+            "planned_for_date": t.planned_for_date.isoformat() if t.planned_for_date else None,
             "priority": t.priority,
             "deadline": utc_naive_to_local(t.deadline).strftime("%Y-%m-%d %H:%M") if t.deadline else None,
+            "deadline_confidence": t.deadline_confidence,
             "repeat": t.repeat,
             "status": t.status,
         }
@@ -805,6 +977,7 @@ def maybe_spawn_next_recurring_task(db: Session, task: Task) -> Task | None:
         priority=task.priority,
         deadline=next_deadline,
         estimated_completion=next_estimated,
+        deadline_confidence=task.deadline_confidence,
         repeat=task.repeat,
         repeat_until=task.repeat_until,
         parent_task_id=root_id,
@@ -818,6 +991,7 @@ def maybe_spawn_next_recurring_task(db: Session, task: Task) -> Task | None:
             title=subtask.title,
             status="pending",
         ))
+    add_task_activity(db, next_task.id, "created", f"Recurring task generated from task #{root_id}.")
     return next_task
 
 
@@ -884,9 +1058,10 @@ async def run_notifications_now(request: Request):
         "info",
         "Reminder scan complete: "
         f"{summary['tasks_scanned']} scanned, "
-        f"{summary['sent_24h']} sent (24h), "
-        f"{summary['sent_2h']} sent (2h), "
-        f"{summary['sent_overdue']} sent (overdue).",
+        f"{summary['sent_day_window']} sent ({summary['day_window_hours']}h), "
+        f"{summary['sent_final_window']} sent ({summary['final_window_hours']}h), "
+        f"{summary['sent_overdue']} sent (overdue), "
+        f"{summary['push_sent']} push notification{'s' if summary['push_sent'] != 1 else ''}.",
     )
     return RedirectResponse(url="/schedule", status_code=303)
 
@@ -896,6 +1071,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     today = local_today()
     now = utc_now_naive()
     stats = get_stats(db)
+    settings = get_settings(db)
     all_tasks = db.query(Task).filter(Task.status != "completed").all()
     tasks = sorted(all_tasks, key=lambda task: task_sort_key(task, today, now))
     completed_tasks = db.query(Task).filter(Task.status == "completed").order_by(Task.completed_at.desc()).limit(5).all()
@@ -905,9 +1081,10 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     ready_tasks = [task for task in tasks if task.status in TASK_QUEUE_STATUSES and task_is_ready(task, today)]
     later_tasks = build_later_queue(tasks, today, now)
     attention_tasks = build_attention_queue(tasks, today, now)
-    today_queue = build_today_queue(tasks, today, now)
+    today_queue = build_today_queue(tasks, today, now, settings=settings)
     subtask_summary = get_subtask_summary(db, [task.id for task in all_tasks])
     overdue_tasks_count = sum(1 for task in ready_tasks if task.deadline and task.deadline < now)
+    planned_today_count = sum(1 for task in tasks if task.planned_for_date == today and task.status in TASK_QUEUE_STATUSES)
 
     # Build history for LLM context
     history = get_task_history(db)
@@ -950,12 +1127,13 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
                 history=history,
                 dw_history=dw_history,
             )
-    next_focus_slot = find_next_focus_slot(db, 50, latest_date=today + timedelta(days=2))
+    next_focus_slot = find_next_focus_slot(db, settings.default_focus_minutes, latest_date=today + timedelta(days=2), settings=settings)
     today_focus_blocks = sum(1 for event in today_events if event.title.startswith(FOCUS_EVENT_PREFIX))
     task_focus_counts = {task.id: count_scheduled_focus_blocks(db, task.id) for task in all_tasks}
 
     return templates.TemplateResponse("index.html", template_context(
         request,
+        today=today,
         tasks=ready_tasks,
         all_tasks=all_tasks,
         today_queue=today_queue[:5],
@@ -969,6 +1147,7 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         streak_multiplier=streak_multiplier,
         priority_labels=PRIORITY_LABELS,
         projects_by_id=projects_by_id,
+        settings=settings,
         now=now,
         active_session=active_session,
         dw_suggestion=dw_suggestion,
@@ -978,13 +1157,304 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         today_focus_blocks=today_focus_blocks,
         open_tasks_count=len(all_tasks),
         today_queue_count=len(today_queue),
+        planned_today_count=planned_today_count,
         overdue_tasks_count=overdue_tasks_count,
         later_tasks_count=len(later_tasks),
         attention_tasks_count=len(attention_tasks),
         subtask_summary=subtask_summary,
         task_focus_counts=task_focus_counts,
-        focus_duration_for_task=focus_duration_for_task,
+        focus_duration_for_task=lambda task: focus_duration_for_task(task, settings=settings),
     ))
+
+
+@app.get("/review", response_class=HTMLResponse, dependencies=[Depends(require_authenticated)])
+async def weekly_review_page(
+    request: Request,
+    week_start: str | None = None,
+    db: Session = Depends(get_db),
+):
+    today = local_today()
+    resolved_start = parse_query_date(week_start, today - timedelta(days=today.weekday()))
+    resolved_start = week_start_for(resolved_start)
+    resolved_end = resolved_start + timedelta(days=6)
+
+    all_tasks = db.query(Task).all()
+    completed_this_week = [
+        task for task in all_tasks
+        if task.completed_at and resolved_start <= utc_naive_to_local(task.completed_at).date() <= resolved_end
+    ]
+    completed_on_time = [task for task in completed_this_week if task.deadline and task.completed_at and task.completed_at <= task.deadline]
+    completed_without_deadline = [task for task in completed_this_week if not task.deadline]
+    completed_late = [task for task in completed_this_week if task.deadline and task.completed_at and task.completed_at > task.deadline]
+    overdue_open = [
+        task for task in all_tasks
+        if task.status != "completed" and task.deadline and utc_naive_to_local(task.deadline).date() <= resolved_end
+    ]
+    blocked_tasks = [task for task in all_tasks if task.status in TASK_HOLD_STATUSES]
+    carried_tasks = [
+        task for task in all_tasks
+        if task.status != "completed" and (
+            (task.planned_for_date and resolved_start <= task.planned_for_date <= resolved_end) or
+            (task.start_on and resolved_start <= task.start_on <= resolved_end) or
+            (task.deadline and resolved_start <= utc_naive_to_local(task.deadline).date() <= resolved_end)
+        )
+    ]
+
+    sessions = db.query(DeepWorkSession).filter(DeepWorkSession.status == "completed").all()
+    weekly_sessions = [
+        session for session in sessions
+        if session.ended_at and resolved_start <= utc_naive_to_local(session.ended_at).date() <= resolved_end
+    ]
+    weekly_focus_minutes = sum((session.actual_duration or session.planned_duration or 0) for session in weekly_sessions)
+    on_time_rate = round((len(completed_on_time) / len(completed_this_week)) * 100) if completed_this_week else 0
+
+    return templates.TemplateResponse("review.html", template_context(
+        request,
+        week_start=resolved_start,
+        week_end=resolved_end,
+        prev_week_start=resolved_start - timedelta(days=7),
+        next_week_start=resolved_start + timedelta(days=7),
+        completed_this_week=completed_this_week,
+        completed_on_time=completed_on_time,
+        completed_without_deadline=completed_without_deadline,
+        completed_late=completed_late,
+        overdue_open=overdue_open,
+        blocked_tasks=blocked_tasks,
+        carried_tasks=carried_tasks,
+        weekly_sessions=weekly_sessions,
+        weekly_focus_minutes=weekly_focus_minutes,
+        on_time_rate=on_time_rate,
+        projects_by_id=project_lookup(get_projects(db)),
+    ))
+
+
+@app.get("/settings", response_class=HTMLResponse, dependencies=[Depends(require_authenticated)])
+async def settings_page(request: Request, db: Session = Depends(get_db)):
+    return templates.TemplateResponse("settings.html", template_context(
+        request,
+        settings=get_settings(db),
+        push_supported=push_notifications_enabled(),
+        push_issues=push_config_issues(),
+    ))
+
+
+@app.post("/settings", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def update_settings(
+    request: Request,
+    workday_start: str = Form(...),
+    workday_end: str = Form(...),
+    default_focus_minutes: int = Form(...),
+    daily_top_task_target: int = Form(...),
+    reminder_day_hours: int = Form(...),
+    reminder_final_hours: int = Form(...),
+    db: Session = Depends(get_db),
+):
+    settings = get_settings(db)
+    try:
+        start_clock = parse_clock(workday_start)
+        end_clock = parse_clock(workday_end)
+    except ValueError:
+        push_alert(request, "error", "Workday start and end must use valid times.")
+        return RedirectResponse(url="/settings", status_code=303)
+
+    if time_to_minutes(end_clock) <= time_to_minutes(start_clock):
+        push_alert(request, "error", "Workday end must be later than workday start.")
+        return RedirectResponse(url="/settings", status_code=303)
+
+    settings.workday_start = workday_start
+    settings.workday_end = workday_end
+    settings.default_focus_minutes = max(25, min(default_focus_minutes, 180))
+    settings.daily_top_task_target = max(1, min(daily_top_task_target, 8))
+    settings.reminder_day_hours = max(1, min(reminder_day_hours, 168))
+    settings.reminder_final_hours = max(1, min(reminder_final_hours, 24))
+    if settings.reminder_final_hours >= settings.reminder_day_hours:
+        push_alert(request, "error", "Final reminder must be shorter than the broader reminder window.")
+        return RedirectResponse(url="/settings", status_code=303)
+
+    db.commit()
+    push_alert(request, "success", "Updated planning settings.")
+    return RedirectResponse(url="/settings", status_code=303)
+
+
+@app.get("/export/data", dependencies=[Depends(require_authenticated)])
+async def export_data(db: Session = Depends(get_db)):
+    payload = {
+        "exported_at": utc_now_naive().isoformat(),
+        "timezone": APP_TIMEZONE_NAME,
+        "settings": [
+            {
+                "workday_start": settings.workday_start,
+                "workday_end": settings.workday_end,
+                "default_focus_minutes": settings.default_focus_minutes,
+                "daily_top_task_target": settings.daily_top_task_target,
+                "reminder_day_hours": settings.reminder_day_hours,
+                "reminder_final_hours": settings.reminder_final_hours,
+            }
+            for settings in db.query(UserSettings).all()
+        ],
+        "projects": [
+            {
+                "id": project.id,
+                "name": project.name,
+                "description": project.description,
+                "created_at": project.created_at.isoformat() if project.created_at else None,
+            }
+            for project in db.query(Project).order_by(Project.id.asc()).all()
+        ],
+        "tasks": [
+            {
+                "id": task.id,
+                "title": task.title,
+                "description": task.description,
+                "project_id": task.project_id,
+                "tags_text": task.tags_text,
+                "start_on": task.start_on.isoformat() if task.start_on else None,
+                "planned_for_date": task.planned_for_date.isoformat() if task.planned_for_date else None,
+                "priority": task.priority,
+                "deadline": task.deadline.isoformat() if task.deadline else None,
+                "estimated_completion": task.estimated_completion.isoformat() if task.estimated_completion else None,
+                "deadline_confidence": task.deadline_confidence,
+                "repeat": task.repeat,
+                "repeat_until": task.repeat_until.isoformat() if task.repeat_until else None,
+                "parent_task_id": task.parent_task_id,
+                "status": task.status,
+                "created_at": task.created_at.isoformat() if task.created_at else None,
+                "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+                "xp_earned": task.xp_earned,
+            }
+            for task in db.query(Task).order_by(Task.id.asc()).all()
+        ],
+        "subtasks": [
+            {
+                "id": subtask.id,
+                "task_id": subtask.task_id,
+                "title": subtask.title,
+                "status": subtask.status,
+                "created_at": subtask.created_at.isoformat() if subtask.created_at else None,
+                "completed_at": subtask.completed_at.isoformat() if subtask.completed_at else None,
+            }
+            for subtask in db.query(Subtask).order_by(Subtask.id.asc()).all()
+        ],
+        "task_notes": [
+            {
+                "id": note.id,
+                "task_id": note.task_id,
+                "content": note.content,
+                "created_at": note.created_at.isoformat() if note.created_at else None,
+            }
+            for note in db.query(TaskNote).order_by(TaskNote.id.asc()).all()
+        ],
+        "task_activities": [
+            {
+                "id": activity.id,
+                "task_id": activity.task_id,
+                "activity_type": activity.activity_type,
+                "message": activity.message,
+                "created_at": activity.created_at.isoformat() if activity.created_at else None,
+            }
+            for activity in db.query(TaskActivity).order_by(TaskActivity.id.asc()).all()
+        ],
+        "events": [
+            {
+                "id": event.id,
+                "title": event.title,
+                "description": event.description,
+                "event_date": event.event_date.isoformat(),
+                "start_time": event.start_time,
+                "end_time": event.end_time,
+                "category": event.category,
+                "color": event.color,
+                "repeat": event.repeat,
+                "repeat_until": event.repeat_until.isoformat() if event.repeat_until else None,
+                "parent_event_id": event.parent_event_id,
+                "created_at": event.created_at.isoformat() if event.created_at else None,
+            }
+            for event in db.query(Event).order_by(Event.id.asc()).all()
+        ],
+        "deep_work_sessions": [
+            {
+                "id": session.id,
+                "task_id": session.task_id,
+                "planned_duration": session.planned_duration,
+                "actual_duration": session.actual_duration,
+                "started_at": session.started_at.isoformat() if session.started_at else None,
+                "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+                "status": session.status,
+                "notes": session.notes,
+                "xp_earned": session.xp_earned,
+            }
+            for session in db.query(DeepWorkSession).order_by(DeepWorkSession.id.asc()).all()
+        ],
+    }
+    filename = f"taskmanager-backup-{local_today().isoformat()}.json"
+    return Response(
+        content=json.dumps(payload, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/push/config", dependencies=[Depends(require_authenticated)])
+async def push_config():
+    public_key = os.getenv("VAPID_PUBLIC_KEY", "").strip()
+    issues = push_config_issues()
+    return {
+        "supported": push_notifications_enabled(),
+        "publicKey": public_key,
+        "issues": issues,
+    }
+
+
+@app.post("/push/subscribe", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def push_subscribe(request: Request, db: Session = Depends(get_db)):
+    payload = await request.json()
+    endpoint = str(payload.get("endpoint", "")).strip()
+    keys = payload.get("keys") or {}
+    p256dh = str(keys.get("p256dh", "")).strip()
+    auth = str(keys.get("auth", "")).strip()
+    if not endpoint or not p256dh or not auth:
+        raise HTTPException(status_code=400, detail="Invalid push subscription payload.")
+
+    subscription = db.query(PushSubscription).filter(PushSubscription.endpoint == endpoint).first()
+    if not subscription:
+        subscription = PushSubscription(endpoint=endpoint, p256dh=p256dh, auth=auth)
+        db.add(subscription)
+    subscription.p256dh = p256dh
+    subscription.auth = auth
+    subscription.enabled = True
+    subscription.user_agent = request.headers.get("user-agent", "")[:500]
+    subscription.last_used_at = utc_now_naive()
+    db.commit()
+    return {"ok": True}
+
+
+@app.post("/push/unsubscribe", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def push_unsubscribe(request: Request, db: Session = Depends(get_db)):
+    payload = await request.json()
+    endpoint = str(payload.get("endpoint", "")).strip()
+    if not endpoint:
+        raise HTTPException(status_code=400, detail="Missing endpoint.")
+    subscription = db.query(PushSubscription).filter(PushSubscription.endpoint == endpoint).first()
+    if subscription:
+        subscription.enabled = False
+        subscription.last_used_at = utc_now_naive()
+        db.commit()
+    return {"ok": True}
+
+
+@app.post("/push/test", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def push_test(request: Request, db: Session = Depends(get_db)):
+    delivered = send_push_message(
+        "TaskManager",
+        "Push notifications are active on this device.",
+        url="/",
+        db=db,
+    )
+    if delivered:
+        push_alert(request, "success", f"Sent test push to {delivered} subscription{'s' if delivered != 1 else ''}.")
+    else:
+        push_alert(request, "error", "No active push subscriptions were available, or push is not configured.")
+    return RedirectResponse(url="/settings", status_code=303)
 
 
 @app.get("/projects", response_class=HTMLResponse, dependencies=[Depends(require_authenticated)])
@@ -1073,14 +1543,19 @@ async def task_detail_page(task_id: int, request: Request, db: Session = Depends
     projects = get_projects(db)
     subtasks = get_subtasks_for_task(db, task.id)
     subtask_summary = get_subtask_summary(db, [task.id]).get(task.id, {"total": 0, "completed": 0, "pending": 0})
+    notes = get_notes_for_task(db, task.id)
+    activities = get_activity_for_task(db, task.id)
     return templates.TemplateResponse("task_detail.html", template_context(
         request,
         task=task,
         subtasks=subtasks,
         subtask_summary=subtask_summary,
+        notes=notes,
+        activities=activities,
         projects=projects,
         projects_by_id=project_lookup(projects),
         priority_labels=PRIORITY_LABELS,
+        today=local_today(),
     ))
 
 
@@ -1105,6 +1580,7 @@ async def create_subtask(
         return RedirectResponse(url=f"/tasks/{task_id}", status_code=303)
 
     db.add(Subtask(task_id=task_id, title=cleaned_title[:200]))
+    add_task_activity(db, task_id, "subtask", f'Added subtask "{cleaned_title[:200]}".')
     db.commit()
     push_alert(request, "success", f'Added subtask to "{task.title}".')
     return RedirectResponse(url=f"/tasks/{task_id}", status_code=303)
@@ -1124,10 +1600,12 @@ async def toggle_subtask(subtask_id: int, request: Request, db: Session = Depend
     if subtask.status == "completed":
         subtask.status = "pending"
         subtask.completed_at = None
+        add_task_activity(db, subtask.task_id, "subtask", f'Reopened subtask "{subtask.title}".')
         push_alert(request, "info", f'Marked "{subtask.title}" as pending.')
     else:
         subtask.status = "completed"
         subtask.completed_at = utc_now_naive()
+        add_task_activity(db, subtask.task_id, "subtask", f'Completed subtask "{subtask.title}".')
         push_alert(request, "success", f'Completed subtask "{subtask.title}".')
     db.commit()
     return RedirectResponse(url=f"/tasks/{subtask.task_id}", status_code=303)
@@ -1143,8 +1621,49 @@ async def delete_subtask(subtask_id: int, request: Request, db: Session = Depend
     task_id = subtask.task_id
     subtask_title = subtask.title
     db.delete(subtask)
+    add_task_activity(db, task_id, "subtask", f'Deleted subtask "{subtask_title}".')
     db.commit()
     push_alert(request, "success", f'Deleted subtask "{subtask_title}".')
+    return RedirectResponse(url=f"/tasks/{task_id}", status_code=303)
+
+
+@app.post("/tasks/{task_id}/notes/create", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def create_task_note(
+    task_id: int,
+    request: Request,
+    content: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        push_alert(request, "error", "Task not found.")
+        return RedirectResponse(url="/", status_code=303)
+
+    cleaned = content.strip()
+    if not cleaned:
+        push_alert(request, "error", "Note content cannot be empty.")
+        return RedirectResponse(url=f"/tasks/{task_id}", status_code=303)
+
+    note = TaskNote(task_id=task_id, content=cleaned[:4000])
+    db.add(note)
+    add_task_activity(db, task_id, "note", f"Added a task note ({min(len(cleaned), 4000)} characters).")
+    db.commit()
+    push_alert(request, "success", "Added note.")
+    return RedirectResponse(url=f"/tasks/{task_id}", status_code=303)
+
+
+@app.post("/task-notes/{note_id}/delete", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def delete_task_note(note_id: int, request: Request, db: Session = Depends(get_db)):
+    note = db.query(TaskNote).filter(TaskNote.id == note_id).first()
+    if not note:
+        push_alert(request, "error", "Note not found.")
+        return RedirectResponse(url="/", status_code=303)
+
+    task_id = note.task_id
+    db.delete(note)
+    add_task_activity(db, task_id, "note", "Deleted a task note.")
+    db.commit()
+    push_alert(request, "success", "Deleted note.")
     return RedirectResponse(url=f"/tasks/{task_id}", status_code=303)
 
 
@@ -1249,6 +1768,8 @@ async def confirm_task(
     priority: int = Form(...),
     deadline: str = Form(""),
     estimated_completion: str = Form(""),
+    deadline_confidence: str = Form("medium"),
+    create_breakdown_subtasks: str = Form(""),
     repeat: str = Form("none"),
     repeat_until: str = Form(""),
     db: Session = Depends(get_db),
@@ -1274,12 +1795,23 @@ async def confirm_task(
         push_alert(request, "error", str(exc))
         return RedirectResponse(url="/tasks/add", status_code=303)
 
+    form = await request.form()
+    breakdown_items = extract_breakdown_items_from_form(form)
+
     task = Task(
         title=cleaned_title,
         description=description.strip(),
+        deadline_confidence=normalize_deadline_confidence(deadline_confidence),
         **prepared,
     )
     db.add(task)
+    db.flush()
+    add_task_activity(db, task.id, "created", f'Task created with priority P{task.priority}.')
+    if create_breakdown_subtasks:
+        for item in breakdown_items:
+            db.add(Subtask(task_id=task.id, title=item))
+        if breakdown_items:
+            add_task_activity(db, task.id, "breakdown", f"Created {len(breakdown_items)} suggested subtasks from the AI breakdown.")
     db.commit()
     push_alert(request, "success", f'Task "{title}" added with priority P{task.priority}.')
     return RedirectResponse(url="/", status_code=303)
@@ -1297,6 +1829,7 @@ async def update_task(
     priority: int = Form(...),
     deadline: str = Form(""),
     estimated_completion: str = Form(""),
+    deadline_confidence: str = Form("medium"),
     status: str = Form("pending"),
     repeat: str = Form("none"),
     repeat_until: str = Form(""),
@@ -1328,14 +1861,33 @@ async def update_task(
         push_alert(request, "error", str(exc))
         return RedirectResponse(url=f"/tasks/{task.id}", status_code=303)
 
+    before = {
+        "title": task.title,
+        "description": task.description,
+        "project_id": task.project_id,
+        "tags_text": task.tags_text,
+        "start_on": task.start_on,
+        "planned_for_date": task.planned_for_date,
+        "priority": task.priority,
+        "deadline": task.deadline,
+        "estimated_completion": task.estimated_completion,
+        "deadline_confidence": task.deadline_confidence,
+        "status": task.status,
+        "repeat": task.repeat,
+        "repeat_until": task.repeat_until,
+    }
+
     task.title = cleaned_title
     task.description = description.strip()
     task.project_id = prepared["project_id"]
     task.tags_text = prepared["tags_text"]
     task.start_on = prepared["start_on"]
+    if task.planned_for_date and task.start_on and task.planned_for_date < task.start_on:
+        task.planned_for_date = None
     task.priority = prepared["priority"]
     task.deadline = prepared["deadline"]
     task.estimated_completion = prepared["estimated_completion"]
+    task.deadline_confidence = normalize_deadline_confidence(deadline_confidence)
     if status == "completed" and task.status == "completed":
         pass
     elif status not in TASK_EDITABLE_STATUSES:
@@ -1347,6 +1899,9 @@ async def update_task(
     if task.status != "completed":
         task.completed_at = None
 
+    update_message = build_task_update_summary(db, before, task)
+    if update_message:
+        add_task_activity(db, task.id, "update", update_message)
     db.commit()
     push_alert(request, "success", f'Updated "{task.title}".')
     return RedirectResponse(url=f"/tasks/{task.id}", status_code=303)
@@ -1380,6 +1935,7 @@ async def complete_task(task_id: int, request: Request, db: Session = Depends(ge
     stats.total_xp += xp
     stats.tasks_completed += 1
     next_task = maybe_spawn_next_recurring_task(db, task)
+    add_task_activity(db, task.id, "completed", f'Task completed for +{xp} XP.')
 
     db.commit()
     if next_task:
@@ -1393,11 +1949,70 @@ async def complete_task(task_id: int, request: Request, db: Session = Depends(ge
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.post("/tasks/{task_id}/plan-date", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def plan_task_date(
+    task_id: int,
+    request: Request,
+    action: str = Form(...),
+    next_path: str = Form("/"),
+    planned_date: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    redirect_url = safe_redirect_target(next_path, "/")
+    if not task:
+        push_alert(request, "error", "Task not found.")
+        return RedirectResponse(url=redirect_url, status_code=303)
+    if task.status == "completed":
+        push_alert(request, "info", f'"{task.title}" is already completed.')
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    today = local_today()
+    action_value = (action or "").strip().lower()
+    planned_for: date | None
+    if action_value == "today":
+        planned_for = today
+    elif action_value == "tomorrow":
+        planned_for = today + timedelta(days=1)
+    elif action_value == "next_week":
+        planned_for = today + timedelta(days=7)
+    elif action_value == "clear":
+        planned_for = None
+    elif action_value == "custom":
+        planned_for = parse_day_input(planned_date)
+        if not planned_for:
+            push_alert(request, "error", "Choose a valid planning date.")
+            return RedirectResponse(url=redirect_url, status_code=303)
+    else:
+        push_alert(request, "error", "Invalid planning action.")
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    if planned_for and task.start_on and planned_for < task.start_on:
+        push_alert(request, "error", f'"{task.title}" cannot be planned before its start date.')
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    task.planned_for_date = planned_for
+    add_task_activity(
+        db,
+        task.id,
+        "plan",
+        f'Planned task for {planned_for.strftime("%b %d, %Y")}.' if planned_for else "Cleared the planning date.",
+    )
+    db.commit()
+    if planned_for:
+        push_alert(request, "success", f'Planned "{task.title}" for {planned_for.strftime("%b %d, %Y")}.')
+    else:
+        push_alert(request, "info", f'Cleared the plan date for "{task.title}".')
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
 @app.post("/tasks/{task_id}/delete", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
 async def delete_task(task_id: int, request: Request, db: Session = Depends(get_db)):
     task = db.query(Task).filter(Task.id == task_id).first()
     if task:
         task_title = task.title
+        db.query(TaskNote).filter(TaskNote.task_id == task.id).delete(synchronize_session=False)
+        db.query(TaskActivity).filter(TaskActivity.task_id == task.id).delete(synchronize_session=False)
         db.query(Subtask).filter(Subtask.task_id == task.id).delete(synchronize_session=False)
         db.delete(task)
         db.commit()
@@ -1410,6 +2025,7 @@ async def start_task(task_id: int, request: Request, db: Session = Depends(get_d
     task = db.query(Task).filter(Task.id == task_id).first()
     if task and task.status != "completed":
         task.status = "in_progress"
+        add_task_activity(db, task.id, "status", 'Marked task as "In Progress".')
         db.commit()
         push_alert(request, "success", f'"{task.title}" is now in progress.')
     elif task and task.status == "completed":
@@ -1434,9 +2050,10 @@ async def plan_focus_block(task_id: int, request: Request, db: Session = Depends
         push_alert(request, "info", f'"{task.title}" already has a scheduled focus block.')
         return RedirectResponse(url="/schedule", status_code=303)
 
-    duration = focus_duration_for_task(task)
+    settings = get_settings(db)
+    duration = focus_duration_for_task(task, settings=settings)
     latest_date = task_target_date(task)
-    slot = find_next_focus_slot(db, duration, latest_date=latest_date)
+    slot = find_next_focus_slot(db, duration, latest_date=latest_date, settings=settings)
     if not slot:
         push_alert(request, "error", f'No {duration}m focus slot is free before the task target date.')
         return RedirectResponse(url="/schedule", status_code=303)
@@ -1451,6 +2068,7 @@ async def plan_focus_block(task_id: int, request: Request, db: Session = Depends
         color="accent",
     )
     db.add(event)
+    add_task_activity(db, task.id, "focus", f'Planned a {duration} minute focus block on {format_slot_label(slot)}.')
     db.commit()
     push_alert(request, "success", f'Planned {duration}m focus block for "{task.title}" on {format_slot_label(slot)}.')
     return RedirectResponse(url="/schedule", status_code=303)
@@ -1642,13 +2260,19 @@ async def schedule_page(
     db: Session = Depends(get_db),
     week_start: str | None = None,
     selected_date: str | None = None,
+    jump_date: str | None = None,
     edit_event_id: int | None = None,
     edit_scope: str | None = None,
 ):
     today = local_today()
     default_week_start = today - timedelta(days=today.weekday())
-    start_of_week = parse_query_date(week_start, default_week_start)
-    selected_day = parse_query_date(selected_date, today)
+    settings = get_settings(db)
+    if jump_date:
+        selected_day = parse_query_date(jump_date, today)
+        start_of_week = week_start_for(selected_day)
+    else:
+        start_of_week = parse_query_date(week_start, default_week_start)
+        selected_day = parse_query_date(selected_date, today)
 
     if not (start_of_week <= selected_day <= start_of_week + timedelta(days=6)):
         selected_day = start_of_week
@@ -1693,7 +2317,12 @@ async def schedule_page(
         week_days=week_days,
         today_events=selected_events,
         pending_count=pending_count,
-        next_focus_slot=find_next_focus_slot(db, 50, latest_date=today + timedelta(days=2)),
+        next_focus_slot=find_next_focus_slot(
+            db,
+            settings.default_focus_minutes,
+            latest_date=today + timedelta(days=2),
+            settings=settings,
+        ),
         week_start=start_of_week,
         week_end=week_end,
         prev_week_start=prev_week_start,
@@ -1704,6 +2333,7 @@ async def schedule_page(
         editing_event=editing_event,
         editing_form_event=editing_form_event,
         editing_scope=editing_scope,
+        settings=settings,
     ))
 
 
@@ -1939,6 +2569,47 @@ async def update_event(
     db.commit()
     push_alert(request, "success", f'Updated "{event.title}".')
     return RedirectResponse(url=schedule_redirect_url(week_start_for(updated_date), updated_date), status_code=303)
+
+
+@app.post("/events/{event_id}/shift", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def shift_event(
+    event_id: int,
+    request: Request,
+    shift_days: int = Form(...),
+    week_start: str = Form(""),
+    selected_date: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    today = local_today()
+    redirect_week = parse_query_date(week_start, week_start_for(today)) if week_start else None
+    redirect_selected = parse_query_date(selected_date, today) if selected_date else None
+    redirect_url = schedule_redirect_url(redirect_week, redirect_selected)
+    event = db.query(Event).filter(Event.id == event_id).first()
+    if not event:
+        push_alert(request, "error", "Event not found.")
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    if shift_days not in {-7, -1, 1, 7}:
+        push_alert(request, "error", "Invalid quick reschedule option.")
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    new_date = event.event_date + timedelta(days=shift_days)
+    start_clock = parse_clock(event.start_time)
+    end_clock = parse_clock(event.end_time)
+    overlaps = find_event_overlaps(db, new_date, start_clock, end_clock, exclude_event_id=event.id)
+    if overlaps:
+        conflict = overlaps[0]
+        push_alert(
+            request,
+            "error",
+            f'Cannot move "{event.title}" because it overlaps with "{conflict.title}" on {new_date.strftime("%b %d")} at {conflict.start_time}.',
+        )
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    event.event_date = new_date
+    db.commit()
+    push_alert(request, "success", f'Moved "{event.title}" to {new_date.strftime("%b %d, %Y")}.')
+    return RedirectResponse(url=schedule_redirect_url(week_start_for(new_date), new_date), status_code=303)
 
 
 @app.post("/events/{event_id}/delete-series", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])

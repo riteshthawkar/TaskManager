@@ -178,6 +178,14 @@ def ensure_schema_compatibility() -> list[str]:
                 applied_migrations.append("tasks.start_on")
                 task_columns.add("start_on")
 
+            if "planned_for_date" not in task_columns:
+                date_type = _date_sql_type(dialect)
+                connection.execute(text(
+                    f"ALTER TABLE tasks ADD COLUMN planned_for_date {date_type}"
+                ))
+                applied_migrations.append("tasks.planned_for_date")
+                task_columns.add("planned_for_date")
+
             if "repeat" not in task_columns:
                 connection.execute(text(
                     "ALTER TABLE tasks ADD COLUMN repeat VARCHAR(20) NOT NULL DEFAULT 'none'"
@@ -200,10 +208,20 @@ def ensure_schema_compatibility() -> list[str]:
                 applied_migrations.append("tasks.parent_task_id")
                 task_columns.add("parent_task_id")
 
+            if "deadline_confidence" not in task_columns:
+                connection.execute(text(
+                    "ALTER TABLE tasks ADD COLUMN deadline_confidence VARCHAR(20) NOT NULL DEFAULT 'medium'"
+                ))
+                applied_migrations.append("tasks.deadline_confidence")
+                task_columns.add("deadline_confidence")
+
             if dialect == "postgresql" and "repeat" in task_columns:
                 connection.execute(text(
                     "UPDATE tasks SET repeat = 'none' WHERE repeat IS NULL"
                 ))
+            connection.execute(text(
+                "UPDATE tasks SET deadline_confidence = 'medium' WHERE deadline_confidence IS NULL"
+            ))
             connection.execute(text(
                 "UPDATE tasks SET status = 'pending' WHERE status IS NULL"
             ))

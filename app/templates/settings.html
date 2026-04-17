@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+
+{% block extra_style %}
+.settings-shell {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 18px;
+}
+.settings-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px;
+    box-shadow: var(--shadow-sm);
+}
+.settings-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+}
+.settings-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+.settings-metric {
+    padding: 12px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.02);
+}
+.settings-metric-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 700;
+}
+.settings-metric-value {
+    margin-top: 6px;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+}
+.settings-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+}
+.settings-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.settings-helper {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+.push-status {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+@media (min-width: 860px) {
+    .settings-shell {
+        grid-template-columns: minmax(0, 1fr) 320px;
+        align-items: start;
+    }
+    .settings-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+{% endblock %}
+
+{% block content %}
+<div class="flex-between fade-in" style="margin-bottom: 18px;">
+    <div>
+        <h1>Settings</h1>
+        <p class="muted mt-xs">Tune the planning rules that shape your dashboard, focus slots, and reminder timing.</p>
+    </div>
+    <a href="/" class="btn btn-outline btn-sm">Dashboard</a>
+</div>
+
+<div class="visual-card fade-in d1" style="margin-bottom: 18px;">
+    <img src="/static/art/focus-garden.svg" alt="Calm garden artwork">
+    <div class="visual-card-copy">
+        <strong>Keep the system opinionated, not rigid.</strong>
+        <span>These values should reflect how you actually work so the app stays lightweight and trustworthy day to day.</span>
+    </div>
+</div>
+
+<div class="settings-shell">
+    <div class="settings-card fade-in d2">
+        <div class="section-header">
+            <div class="section-dot" style="background: var(--accent);"></div>
+            <h2 style="margin-bottom: 0;">Planning Defaults</h2>
+        </div>
+        <form method="post" action="/settings">
+            {{ csrf_input(request) }}
+            <div class="settings-grid">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="workday_start">Workday start</label>
+                    <input id="workday_start" type="time" name="workday_start" value="{{ settings.workday_start }}" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="workday_end">Workday end</label>
+                    <input id="workday_end" type="time" name="workday_end" value="{{ settings.workday_end }}" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="default_focus_minutes">Default focus block (minutes)</label>
+                    <input id="default_focus_minutes" type="number" min="25" max="180" step="5" name="default_focus_minutes" value="{{ settings.default_focus_minutes }}" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="daily_top_task_target">Daily top-task target</label>
+                    <input id="daily_top_task_target" type="number" min="1" max="8" name="daily_top_task_target" value="{{ settings.daily_top_task_target }}" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="reminder_day_hours">Broader reminder window (hours)</label>
+                    <input id="reminder_day_hours" type="number" min="1" max="168" name="reminder_day_hours" value="{{ settings.reminder_day_hours }}" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="reminder_final_hours">Final reminder window (hours)</label>
+                    <input id="reminder_final_hours" type="number" min="1" max="24" name="reminder_final_hours" value="{{ settings.reminder_final_hours }}" required>
+                </div>
+            </div>
+            <div class="settings-actions">
+                <a href="/review" class="btn btn-outline">Weekly Review</a>
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="settings-stack">
+    <div class="settings-card fade-in d3">
+        <div class="section-header">
+            <div class="section-dot" style="background: var(--green);"></div>
+            <h2 style="margin-bottom: 0;">Current Environment</h2>
+        </div>
+        <div class="settings-metric-grid">
+            <div class="settings-metric">
+                <div class="settings-metric-label">Timezone</div>
+                <div class="settings-metric-value">{{ app_timezone_name }}</div>
+            </div>
+            <div class="settings-metric">
+                <div class="settings-metric-label">Workday span</div>
+                <div class="settings-metric-value">{{ settings.workday_start }} - {{ settings.workday_end }}</div>
+            </div>
+            <div class="settings-metric">
+                <div class="settings-metric-label">Focus default</div>
+                <div class="settings-metric-value">{{ settings.default_focus_minutes }} min</div>
+            </div>
+            <div class="settings-metric">
+                <div class="settings-metric-label">Reminder windows</div>
+                <div class="settings-metric-value">{{ settings.reminder_day_hours }}h / {{ settings.reminder_final_hours }}h</div>
+            </div>
+        </div>
+        <p class="muted" style="margin-top: 14px;">
+            The dashboard queue, focus-slot finder, and reminder checks all use these values. If the app feels too strict or too loose, start here.
+        </p>
+    </div>
+
+    <div class="settings-card fade-in d4">
+        <div class="section-header">
+            <div class="section-dot" style="background: var(--cyan);"></div>
+            <h2 style="margin-bottom: 0;">Backup & Export</h2>
+        </div>
+        <p class="settings-helper">Download a full JSON snapshot of projects, tasks, subtasks, notes, events, sessions, and settings.</p>
+        <div class="settings-actions">
+            <a href="/export/data" class="btn btn-outline">Download Backup</a>
+        </div>
+    </div>
+
+    <div class="settings-card fade-in d5">
+        <div class="section-header">
+            <div class="section-dot" style="background: var(--accent);"></div>
+            <h2 style="margin-bottom: 0;">Push Notifications</h2>
+        </div>
+        <p class="settings-helper">Enable browser notifications on this device so reminders can reach your phone without relying only on email.</p>
+        {% if push_issues %}
+        <div class="alert alert-error" style="margin-top: 12px;">Push setup is incomplete: {{ push_issues|join(', ') }}</div>
+        {% endif %}
+        <div class="settings-actions">
+            <button type="button" id="enable-push" class="btn btn-primary" {% if push_issues %}disabled{% endif %}>Enable Push on This Device</button>
+            <button type="button" id="disable-push" class="btn btn-outline">Disable Push</button>
+            <form method="post" action="/push/test">
+                {{ csrf_input(request) }}
+                <button type="submit" class="btn btn-outline">Send Test Push</button>
+            </form>
+        </div>
+        <div id="push-status" class="push-status">
+            {% if push_supported %}
+            Push support is available when this browser grants notification permission and the VAPID keys are configured.
+            {% else %}
+            Push support is not configured on the server yet.
+            {% endif %}
+        </div>
+    </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var enableBtn = document.getElementById('enable-push');
+    var disableBtn = document.getElementById('disable-push');
+    var statusNode = document.getElementById('push-status');
+    var csrfToken = {{ csrf_token|tojson }};
+
+    if (!enableBtn || !disableBtn || !statusNode) {
+        return;
+    }
+
+    function setStatus(message) {
+        statusNode.textContent = message;
+    }
+
+    function base64UrlToUint8Array(base64String) {
+        var padding = '='.repeat((4 - base64String.length % 4) % 4);
+        var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+        var rawData = atob(base64);
+        var outputArray = new Uint8Array(rawData.length);
+        for (var i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    }
+
+    async function fetchPushConfig() {
+        var response = await fetch('/push/config', { credentials: 'same-origin' });
+        return response.json();
+    }
+
+    enableBtn.addEventListener('click', async function () {
+        try {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+                setStatus('This browser does not support push notifications.');
+                return;
+            }
+            var permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                setStatus('Notification permission was not granted.');
+                return;
+            }
+            var config = await fetchPushConfig();
+            if (!config.supported || !config.publicKey) {
+                setStatus('Push is not configured on the server yet.');
+                return;
+            }
+            var registration = await navigator.serviceWorker.ready;
+            var subscription = await registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: base64UrlToUint8Array(config.publicKey)
+            });
+            await fetch('/push/subscribe', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrfToken
+                },
+                body: JSON.stringify(subscription)
+            });
+            setStatus('Push notifications are enabled on this device.');
+        } catch (error) {
+            setStatus('Could not enable push notifications: ' + error.message);
+        }
+    });
+
+    disableBtn.addEventListener('click', async function () {
+        try {
+            if (!('serviceWorker' in navigator)) {
+                setStatus('No service worker is available in this browser.');
+                return;
+            }
+            var registration = await navigator.serviceWorker.ready;
+            var subscription = await registration.pushManager.getSubscription();
+            if (!subscription) {
+                setStatus('No active push subscription found on this device.');
+                return;
+            }
+            await fetch('/push/unsubscribe', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-csrf-token': csrfToken
+                },
+                body: JSON.stringify({ endpoint: subscription.endpoint })
+            });
+            await subscription.unsubscribe();
+            setStatus('Push notifications were disabled on this device.');
+        } catch (error) {
+            setStatus('Could not disable push notifications: ' + error.message);
+        }
+    });
+})();
+</script>
+{% endblock %}
