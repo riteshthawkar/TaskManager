@@ -27,7 +27,9 @@ from app.time_utils import (
     local_now,
     utc_now_naive,
     utc_naive_to_local,
-    local_date_input_to_utc_naive_end_of_day,
+    local_datetime_input_display,
+    local_datetime_input_to_utc_naive,
+    local_datetime_input_value,
     local_date_input_value,
     local_date_from_input,
     shift_utc_naive_by_local_days,
@@ -182,6 +184,8 @@ def csrf_input(request: Request) -> Markup:
 templates.env.globals["csrf_input"] = csrf_input
 templates.env.globals["local_dt"] = utc_naive_to_local
 templates.env.globals["date_input_value"] = local_date_input_value
+templates.env.globals["datetime_input_value"] = local_datetime_input_value
+templates.env.globals["input_datetime_display"] = local_datetime_input_display
 
 
 def require_authenticated(request: Request) -> None:
@@ -296,8 +300,8 @@ def get_stats(db: Session) -> UserStats:
 
 
 def parse_date_input(value: str) -> datetime | None:
-    """Treat date inputs as local end-of-day, then store as UTC-naive."""
-    return local_date_input_to_utc_naive_end_of_day(value)
+    """Treat inputs as local datetime values, then store as UTC-naive."""
+    return local_datetime_input_to_utc_naive(value)
 
 
 def parse_day_input(value: str) -> date | None:
@@ -698,9 +702,9 @@ def get_task_history(db: Session, limit: int = 30) -> list:
             "subtasks_completed": subtask_summary.get(t.id, {}).get("completed", 0),
             "subtasks_total": subtask_summary.get(t.id, {}).get("total", 0),
             "start_on": t.start_on.isoformat() if t.start_on else None,
-            "deadline": utc_naive_to_local(t.deadline).strftime("%Y-%m-%d") if t.deadline else None,
-            "created_at": utc_naive_to_local(t.created_at).strftime("%Y-%m-%d") if t.created_at else None,
-            "completed_at": utc_naive_to_local(t.completed_at).strftime("%Y-%m-%d") if t.completed_at else None,
+            "deadline": utc_naive_to_local(t.deadline).strftime("%Y-%m-%d %H:%M") if t.deadline else None,
+            "created_at": utc_naive_to_local(t.created_at).strftime("%Y-%m-%d %H:%M") if t.created_at else None,
+            "completed_at": utc_naive_to_local(t.completed_at).strftime("%Y-%m-%d %H:%M") if t.completed_at else None,
             "duration_days": duration_days,
             "on_time": on_time,
         })
@@ -723,7 +727,7 @@ def get_pending_tasks_data(db: Session) -> list:
             "subtasks_total": subtask_summary.get(t.id, {}).get("total", 0),
             "start_on": t.start_on.isoformat() if t.start_on else None,
             "priority": t.priority,
-            "deadline": utc_naive_to_local(t.deadline).strftime("%Y-%m-%d") if t.deadline else None,
+            "deadline": utc_naive_to_local(t.deadline).strftime("%Y-%m-%d %H:%M") if t.deadline else None,
             "repeat": t.repeat,
             "status": t.status,
         }

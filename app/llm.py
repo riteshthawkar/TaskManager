@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from openai import OpenAI
 from dotenv import load_dotenv
 
-from app.time_utils import local_now, local_today_str
+from app.time_utils import local_now
 
 load_dotenv()
 
@@ -83,15 +83,18 @@ Rules:
 - If the user gave a deadline, respect it as the suggested_deadline but give your honest estimated_completion_date.
 - For simple tasks, the estimated_completion_date should be sooner than the deadline.
 - If the task seems too complex for the user's deadline, flag this in reasoning.
+- Return deadline values in the user's local time using `YYYY-MM-DDTHH:MM`.
+- If the user gives only a date with no time, assume end of day.
+- Use an explicit time, not just a date.
 
-Today's date: {today}
+Current local date/time: {today}
 
 Respond in this exact JSON format:
 {{
     "questions": ["question1", "question2"],
     "suggested_priority": 3,
-    "suggested_deadline": "YYYY-MM-DD",
-    "estimated_completion_date": "YYYY-MM-DD",
+    "suggested_deadline": "YYYY-MM-DDTHH:MM",
+    "estimated_completion_date": "YYYY-MM-DDTHH:MM",
     "reasoning": "Explain your reasoning, referencing their history and schedule if relevant"
 }}"""
 
@@ -111,13 +114,18 @@ TODAY'S SCHEDULE:
 
 USER'S REQUESTED DEADLINE (if any): {user_deadline}
 
-Today's date: {today}
+Rules:
+- Return deadline values in the user's local time using `YYYY-MM-DDTHH:MM`.
+- If the user gives only a date with no time, assume end of day.
+- Use an explicit time, not just a date.
+
+Current local date/time: {today}
 
 Respond in this exact JSON format:
 {{
     "suggested_priority": 3,
-    "suggested_deadline": "YYYY-MM-DD",
-    "estimated_completion_date": "YYYY-MM-DD",
+    "suggested_deadline": "YYYY-MM-DDTHH:MM",
+    "estimated_completion_date": "YYYY-MM-DDTHH:MM",
     "reasoning": "Refined reasoning based on clarifications"
 }}"""
 
@@ -138,12 +146,18 @@ def _build_context_blocks(history, pending, schedule):
     return history_block, pending_block, schedule_block
 
 
-def _normalize_date_string(value: str | None, fallback: str) -> str:
-    """Accept only YYYY-MM-DD responses from the model."""
+def _normalize_datetime_string(value: str | None, fallback: str) -> str:
+    """Accept local date-only or local datetime responses from the model."""
     if not value:
         return fallback
+    cleaned = str(value).strip()
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(cleaned, fmt).strftime("%Y-%m-%dT%H:%M")
+        except (TypeError, ValueError):
+            continue
     try:
-        return datetime.strptime(value, "%Y-%m-%d").strftime("%Y-%m-%d")
+        return datetime.strptime(cleaned, "%Y-%m-%d").strftime("%Y-%m-%dT23:59")
     except (TypeError, ValueError):
         return fallback
 
@@ -175,7 +189,7 @@ def analyze_task(title: str, description: str, history: list = None,
                  user_deadline: str = None) -> dict:
     """Analyze a task using history + schedule aware LLM."""
     history_block, pending_block, schedule_block = _build_context_blocks(history, pending, schedule)
-    default_deadline = (local_now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    default_deadline = (local_now() + timedelta(days=7)).replace(second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M")
 
     try:
         prompt = TASK_ANALYSIS_PROMPT.format(
@@ -183,7 +197,7 @@ def analyze_task(title: str, description: str, history: list = None,
             pending=pending_block,
             schedule=schedule_block,
             user_deadline=user_deadline or "Not specified — suggest one",
-            today=local_today_str(),
+            today=local_now().strftime("%Y-%m-%d %H:%M"),
         )
         response = _get_client().chat.completions.create(
             model="gpt-4o-mini",
@@ -197,11 +211,11 @@ def analyze_task(title: str, description: str, history: list = None,
         )
         result = json.loads(response.choices[0].message.content)
         suggested_deadline = (
-            _normalize_date_string(user_deadline, default_deadline)
+            _normalize_datetime_string(user_deadline, default_deadline)
             if user_deadline
-            else _normalize_date_string(result.get("suggested_deadline"), default_deadline)
+            else _normalize_datetime_string(result.get("suggested_deadline"), default_deadline)
         )
-        estimated_completion = _normalize_date_string(
+        estimated_completion = _normalize_datetime_string(
             result.get("estimated_completion_date"),
             suggested_deadline,
         )
@@ -213,7 +227,7 @@ def analyze_task(title: str, description: str, history: list = None,
             "reasoning": str(result.get("reasoning", "")),
         }
     except Exception:
-        suggested_deadline = _normalize_date_string(user_deadline, default_deadline) if user_deadline else default_deadline
+        suggested_deadline = _normalize_datetime_string(user_deadline, default_deadline) if user_deadline else default_deadline
         return {
             "questions": [],
             "suggested_priority": 3,
@@ -228,7 +242,7 @@ def followup_analyze(title: str, description: str, questions: list, answers: lis
                      schedule: list = None, user_deadline: str = None) -> dict:
     """Re-analyze task after user answers clarifying questions."""
     history_block, pending_block, schedule_block = _build_context_blocks(history, pending, schedule)
-    default_deadline = (local_now() + timedelta(days=7)).strftime("%Y-%m-%d")
+    default_deadline = (local_now() + timedelta(days=7)).replace(second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M")
 
     qa_block = "\n".join(
         f"Q: {q}\nA: {a}" for q, a in zip(questions, answers)
@@ -240,7 +254,7 @@ def followup_analyze(title: str, description: str, questions: list, answers: lis
             pending=pending_block,
             schedule=schedule_block,
             user_deadline=user_deadline or "Not specified",
-            today=local_today_str(),
+            today=local_now().strftime("%Y-%m-%d %H:%M"),
         )
         response = _get_client().chat.completions.create(
             model="gpt-4o-mini",
@@ -257,11 +271,11 @@ def followup_analyze(title: str, description: str, questions: list, answers: lis
         )
         result = json.loads(response.choices[0].message.content)
         suggested_deadline = (
-            _normalize_date_string(user_deadline, default_deadline)
+            _normalize_datetime_string(user_deadline, default_deadline)
             if user_deadline
-            else _normalize_date_string(result.get("suggested_deadline"), default_deadline)
+            else _normalize_datetime_string(result.get("suggested_deadline"), default_deadline)
         )
-        estimated_completion = _normalize_date_string(
+        estimated_completion = _normalize_datetime_string(
             result.get("estimated_completion_date"),
             suggested_deadline,
         )
@@ -272,7 +286,7 @@ def followup_analyze(title: str, description: str, questions: list, answers: lis
             "reasoning": str(result.get("reasoning", "")),
         }
     except Exception:
-        suggested_deadline = _normalize_date_string(user_deadline, default_deadline) if user_deadline else default_deadline
+        suggested_deadline = _normalize_datetime_string(user_deadline, default_deadline) if user_deadline else default_deadline
         return {
             "suggested_priority": 3,
             "suggested_deadline": suggested_deadline,

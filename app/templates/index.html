@@ -515,7 +515,7 @@
                                     {% elif hours_left < 24 %}
                                         <span class="warn">Due in {{ hours_left }}h</span>
                                     {% else %}
-                                        <span>{{ deadline_local.strftime('%b %d, %Y') }}</span>
+                                        <span>{{ deadline_local.strftime('%b %d, %Y %I:%M %p') }}</span>
                                     {% endif %}
                                 {% else %}
                                     <span>No deadline</span>
@@ -523,7 +523,7 @@
                                 {% if task.estimated_completion %}
                                     {% set estimated_local = local_dt(task.estimated_completion) %}
                                     <span class="sep"></span>
-                                    <span>Estimated {{ estimated_local.strftime('%b %d') }}</span>
+                                    <span>Estimated {{ estimated_local.strftime('%b %d, %I:%M %p') }}</span>
                                 {% endif %}
                                 {% if task.description %}
                                     <span class="sep"></span>
@@ -648,8 +648,8 @@
                             <div class="plan-task-meta">
                                 P{{ task.priority }}
                                 {% if task.project_id and task.project_id in projects_by_id %} &middot; {{ projects_by_id.get(task.project_id).name }}{% endif %}
-                                {% if task.deadline %} &middot; due {{ local_dt(task.deadline).strftime('%b %d') }}{% endif %}
-                                {% if task.estimated_completion %} &middot; estimated {{ local_dt(task.estimated_completion).strftime('%b %d') }}{% endif %}
+                                {% if task.deadline %} &middot; due {{ local_dt(task.deadline).strftime('%b %d, %I:%M %p') }}{% endif %}
+                                {% if task.estimated_completion %} &middot; estimated {{ local_dt(task.estimated_completion).strftime('%b %d, %I:%M %p') }}{% endif %}
                                 {% if task.tags_text %} &middot; {{ task.tags_text }}{% endif %}
                                 {% if subtask_summary.get(task.id, {}).get('total', 0) %} &middot; {{ subtask_summary.get(task.id, {}).get('completed', 0) }}/{{ subtask_summary.get(task.id, {}).get('total', 0) }} subtasks{% endif %}
                             </div>

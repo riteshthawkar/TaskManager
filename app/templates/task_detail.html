@@ -364,11 +364,11 @@
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                     <label for="deadline">Deadline</label>
-                    <input type="date" id="deadline" name="deadline" value="{{ date_input_value(task.deadline) }}">
+                    <input type="datetime-local" id="deadline" name="deadline" value="{{ datetime_input_value(task.deadline) }}">
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                     <label for="estimated_completion">Estimated Completion</label>
-                    <input type="date" id="estimated_completion" name="estimated_completion" value="{{ date_input_value(task.estimated_completion) }}">
+                    <input type="datetime-local" id="estimated_completion" name="estimated_completion" value="{{ datetime_input_value(task.estimated_completion) }}">
                 </div>
                 <div class="form-group" style="margin-bottom: 0;">
                     <label for="repeat">Repeat</label>

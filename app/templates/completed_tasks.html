@@ -85,7 +85,7 @@
                     {% endif %}
                     {% if task.deadline %}
                     <span>&middot;</span>
-                    <span>Deadline {{ local_dt(task.deadline).strftime('%b %d, %Y') }}</span>
+                    <span>Deadline {{ local_dt(task.deadline).strftime('%b %d, %Y %I:%M %p') }}</span>
                     {% endif %}
                     {% if task.tags_text %}
                     <span>&middot;</span>

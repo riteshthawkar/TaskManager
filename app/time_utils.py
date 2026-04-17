@@ -40,12 +40,43 @@ def utc_naive_to_local(value: datetime | None) -> datetime | None:
     return aware.astimezone(APP_TIMEZONE)
 
 
-def local_date_input_to_utc_naive_end_of_day(value: str) -> datetime | None:
+def local_datetime_from_input(value: str, default_time: time | None = None) -> datetime | None:
     if not value:
         return None
-    parsed = local_date_from_input(value)
-    local_deadline = datetime.combine(parsed, time(23, 59, 59), tzinfo=APP_TIMEZONE)
-    return local_deadline.astimezone(timezone.utc).replace(tzinfo=None)
+
+    cleaned = value.strip()
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M"):
+        try:
+            return datetime.strptime(cleaned, fmt)
+        except ValueError:
+            continue
+
+    parsed_date = local_date_from_input(cleaned)
+    if parsed_date is None:
+        return None
+    return datetime.combine(parsed_date, default_time or time(23, 59, 59))
+
+
+def local_datetime_input_to_utc_naive(value: str, default_time: time | None = None) -> datetime | None:
+    parsed = local_datetime_from_input(value, default_time=default_time)
+    if parsed is None:
+        return None
+    local_value = parsed.replace(tzinfo=APP_TIMEZONE)
+    return local_value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def local_datetime_input_value(value: datetime | None) -> str:
+    local_value = utc_naive_to_local(value)
+    return local_value.strftime("%Y-%m-%dT%H:%M") if local_value else ""
+
+
+def local_datetime_input_display(value: str | None) -> str:
+    parsed = local_datetime_from_input(value or "")
+    return parsed.strftime("%b %d, %Y %I:%M %p") if parsed else ""
+
+
+def local_date_input_to_utc_naive_end_of_day(value: str) -> datetime | None:
+    return local_datetime_input_to_utc_naive(value, default_time=time(23, 59, 59))
 
 
 def local_date_input_value(value: datetime | None) -> str:

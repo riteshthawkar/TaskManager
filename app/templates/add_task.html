@@ -228,7 +228,7 @@
         </div>
         <div class="form-group">
             <label for="user_deadline">Your deadline (optional)</label>
-            <input type="date" id="user_deadline" name="user_deadline">
+            <input type="datetime-local" id="user_deadline" name="user_deadline">
         </div>
         <div class="two-col">
             <div class="form-group" style="margin-bottom: 0;">
@@ -271,7 +271,7 @@
 <div class="preview-bar fade-in d1">
     <div class="preview-title">{{ title }}</div>
     {% if description %}<div class="preview-desc">{{ description }}</div>{% endif %}
-    {% if user_deadline %}<div class="preview-desc" style="margin-top: 4px; color: var(--accent);">Deadline: {{ user_deadline }}</div>{% endif %}
+    {% if user_deadline %}<div class="preview-desc" style="margin-top: 4px; color: var(--accent);">Deadline: {{ input_datetime_display(user_deadline) }}</div>{% endif %}
 </div>
 
 <div class="analysis fade-in d2">
@@ -303,7 +303,7 @@
 
         {% if analysis.estimated_completion_date and analysis.estimated_completion_date != analysis.suggested_deadline %}
         <div class="est-badge">
-            Estimated completion: {{ analysis.estimated_completion_date }}
+            Estimated completion: {{ input_datetime_display(analysis.estimated_completion_date) }}
             {% if user_deadline and analysis.estimated_completion_date > user_deadline %}
                 &mdash; may be tight
             {% endif %}
@@ -339,7 +339,7 @@
 <div class="preview-bar fade-in d1">
     <div class="preview-title">{{ title }}</div>
     {% if description %}<div class="preview-desc">{{ description }}</div>{% endif %}
-    {% if user_deadline %}<div class="preview-desc" style="margin-top: 4px; color: var(--accent);">Your deadline: {{ user_deadline }}</div>{% endif %}
+    {% if user_deadline %}<div class="preview-desc" style="margin-top: 4px; color: var(--accent);">Your deadline: {{ input_datetime_display(user_deadline) }}</div>{% endif %}
 </div>
 
 <div class="card fade-in d2">
@@ -362,11 +362,11 @@
             </div>
             <div class="form-group">
                 <label for="deadline">Deadline</label>
-                <input type="date" id="deadline" name="deadline" value="{{ analysis.suggested_deadline }}">
+                <input type="datetime-local" id="deadline" name="deadline" value="{{ analysis.suggested_deadline }}">
             </div>
             <div class="form-group">
                 <label for="estimated_completion">Estimated Completion</label>
-                <input type="date" id="estimated_completion" name="estimated_completion" value="{{ analysis.estimated_completion_date or '' }}">
+                <input type="datetime-local" id="estimated_completion" name="estimated_completion" value="{{ analysis.estimated_completion_date or '' }}">
             </div>
         </div>
         <div class="two-col">
