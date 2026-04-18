@@ -202,6 +202,15 @@
     border-radius: 6px;
     text-transform: capitalize;
 }
+.event-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(99,255,175,0.16);
+    background: rgba(99,255,175,0.10);
+    color: var(--cyan);
+}
 .cat-meeting { background: var(--accent-glow); color: var(--accent-bright); }
 .cat-work { background: var(--cyan-glow); color: var(--cyan); }
 .cat-personal { background: var(--green-glow); color: var(--green); }
@@ -318,6 +327,61 @@
     font-size: 12px;
     color: var(--text-secondary);
     margin-top: 3px;
+}
+.planner-card {
+    background: rgba(99,255,175,0.08);
+    border: 1px solid rgba(99,255,175,0.16);
+    border-radius: var(--radius-sm);
+    padding: 14px;
+    margin-bottom: 14px;
+}
+.planner-copy {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+.planner-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(99,255,175,0.16);
+    background: rgba(99,255,175,0.10);
+    color: var(--cyan);
+    font-size: 11px;
+    font-weight: 700;
+}
+.planner-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+.planner-block {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(149,255,69,0.08);
+    border-radius: 10px;
+    padding: 10px 12px;
+}
+.planner-block-title {
+    font-size: 13px;
+    font-weight: 700;
+}
+.planner-block-meta {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+}
+.planner-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+.planner-actions form,
+.planner-actions .btn {
+    flex: 1 1 140px;
 }
 .event-edit-note {
     margin-top: 10px;
@@ -445,6 +509,9 @@
                             <div class="event-name">{{ event.title }}</div>
                             <div class="event-meta">
                                 <span class="event-category cat-{{ event.category }}">{{ event.category }}</span>
+                                {% if event.planner_source == 'day_plan' %}
+                                <span class="event-badge">AI Plan</span>
+                                {% endif %}
                                 {% if event.description %}
                                 <span class="event-desc">{{ event.description[:50] }}{% if event.description|length > 50 %}...{% endif %}</span>
                                 {% endif %}
@@ -495,6 +562,67 @@
     </div>
 
     <div class="schedule-side">
+        <div class="planner-card fade-in d2">
+            <div class="flex-between mb-sm">
+                <h2 style="margin-bottom:0;">AI Day Plan</h2>
+                {% if selected_day_plan %}
+                <span class="planner-status">{{ "Applied" if selected_day_plan.status == "applied" else "Draft" }}</span>
+                {% endif %}
+            </div>
+            {% if selected_day_plan %}
+            <div class="planner-copy">
+                <strong>{{ selected_day_plan.summary }}</strong>
+                {% if selected_day_plan.reasoning %}
+                <div style="margin-top: 6px;">{{ selected_day_plan.reasoning }}</div>
+                {% endif %}
+                <div style="margin-top: 8px; color: var(--accent-bright);">{{ selected_day_plan_blocks|length }} blocks · {{ selected_day_plan_minutes }} minutes</div>
+            </div>
+            <div class="planner-blocks">
+                {% for block in selected_day_plan_blocks %}
+                <div class="planner-block">
+                    <div class="planner-block-title">{{ block.title }}</div>
+                    <div class="planner-block-meta">{{ block.start_time }} - {{ block.end_time }} · {{ block.minutes }} minutes{% if block.detail %} · {{ block.detail }}{% endif %}</div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="planner-actions">
+                {% if selected_day_plan.status == 'draft' %}
+                <form method="post" action="/day-plan/{{ selected_day_plan.id }}/apply">
+                    {{ csrf_input(request) }}
+                    <input type="hidden" name="next_path" value="/schedule?week_start={{ week_start.isoformat() }}&selected_date={{ selected_day.isoformat() }}">
+                    <button type="submit" class="btn btn-primary btn-sm">Apply Plan</button>
+                </form>
+                {% endif %}
+                {% if selected_day >= today %}
+                <form method="post" action="/day-plan/generate">
+                    {{ csrf_input(request) }}
+                    <input type="hidden" name="plan_date" value="{{ selected_day.isoformat() }}">
+                    <input type="hidden" name="planning_mode" value="{{ 'replan' if selected_day_plan else 'initial' }}">
+                    <input type="hidden" name="next_path" value="/schedule?week_start={{ week_start.isoformat() }}&selected_date={{ selected_day.isoformat() }}">
+                    <button type="submit" class="btn btn-outline btn-sm">{{ 'Replan Day' if selected_day_plan else 'Plan This Day' }}</button>
+                </form>
+                {% endif %}
+            </div>
+            {% elif selected_day >= today %}
+            <div class="planner-copy">
+                Generate a smart day plan from your tasks and fixed events. The AI will propose exact time slots, and the app will only apply them if they still fit safely.
+            </div>
+            <div class="planner-actions">
+                <form method="post" action="/day-plan/generate">
+                    {{ csrf_input(request) }}
+                    <input type="hidden" name="plan_date" value="{{ selected_day.isoformat() }}">
+                    <input type="hidden" name="planning_mode" value="initial">
+                    <input type="hidden" name="next_path" value="/schedule?week_start={{ week_start.isoformat() }}&selected_date={{ selected_day.isoformat() }}">
+                    <button type="submit" class="btn btn-primary btn-sm">Plan This Day</button>
+                </form>
+            </div>
+            {% else %}
+            <div class="planner-copy">
+                Day planning is available for today and future dates.
+            </div>
+            {% endif %}
+        </div>
+
         {% if next_focus_slot %}
         <div class="focus-hint fade-in d2">
             <div class="focus-hint-title">Next Free Focus Slot</div>

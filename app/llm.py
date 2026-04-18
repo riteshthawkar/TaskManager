@@ -136,6 +136,70 @@ Respond in this exact JSON format:
 }}"""
 
 
+DAY_PLAN_PROMPT = """You are an expert daily planner.
+
+Your job is to decide how the user should spend a specific day based on:
+- their open tasks
+- the day's fixed commitments (classes, meetings, personal events)
+- deadlines, planned dates, status, and subtask progress
+- realistic capacity
+
+You are choosing exact work blocks for the day. Pick start times from the available free slots below.
+You decide:
+- which tasks deserve time today
+- the exact start time for each block
+- how many minutes each task should get today
+- what the day's focus should be
+- what the user should watch out for
+
+Target planning date: {target_date}
+Current local time: {current_time}
+Planning mode: {planning_mode}
+
+User settings:
+{settings_json}
+
+Open task candidates:
+{tasks_json}
+
+Fixed schedule for the day:
+{schedule_json}
+
+Available free slots:
+{free_slots_json}
+
+Completed task history:
+{history}
+
+Rules:
+- Return 2-6 recommendations.
+- Use only task IDs that exist in the candidate list.
+- Use a `start_time` that fits inside one of the listed available free slots.
+- Recommend minutes for TODAY only, not total task duration.
+- Do not fill the entire day; leave breathing room.
+- Prefer urgent or already-planned tasks, but do not overload the day.
+- Avoid blocked or waiting work.
+- If the day is crowded, choose fewer tasks and be explicit about tradeoffs.
+- Keep minutes practical: 25, 30, 45, 50, 60, 75, 90, 120, or 150.
+- Return `start_time` as `HH:MM` in local time.
+- Keep summary concise and actionable.
+
+Respond in this exact JSON format:
+{{
+    "summary": "Short summary of the day's plan",
+    "reasoning": "Why these tasks deserve time today",
+    "recommendations": [
+        {{
+            "task_id": 12,
+            "start_time": "09:30",
+            "minutes": 50,
+            "reason": "Why it should get time today"
+        }}
+    ],
+    "watchouts": ["One short risk or reminder"]
+}}"""
+
+
 def _build_context_blocks(history, pending, schedule):
     """Build formatted context blocks for LLM prompts."""
     history_block = _build_history_block(history or [])
@@ -216,6 +280,45 @@ def _normalize_priority(value, fallback: int = 3) -> int:
 def _normalize_confidence(value, fallback: str = "medium") -> str:
     cleaned = str(value or fallback).strip().lower()
     return cleaned if cleaned in {"high", "medium", "low"} else fallback
+
+
+def _normalize_minutes(value, fallback: int = 50) -> int:
+    try:
+        minutes = int(value)
+    except (TypeError, ValueError):
+        minutes = fallback
+    minutes = max(25, min(180, minutes))
+    rounded = int(round(minutes / 5) * 5)
+    return max(25, min(180, rounded))
+
+
+def _normalize_watchouts(value) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    watchouts = []
+    for item in value:
+        cleaned = str(item).strip()
+        if cleaned:
+            watchouts.append(cleaned[:240])
+        if len(watchouts) == 4:
+            break
+    return watchouts
+
+
+def local_today_str() -> str:
+    return local_now().strftime("%Y-%m-%d")
+
+
+def _normalize_clock_string(value, fallback: str | None = None) -> str | None:
+    if value is None:
+        return fallback
+    cleaned = str(value).strip()
+    for fmt in ("%H:%M", "%H:%M:%S"):
+        try:
+            return datetime.strptime(cleaned, fmt).strftime("%H:%M")
+        except (TypeError, ValueError):
+            continue
+    return fallback
 
 
 def analyze_task(title: str, description: str, history: list = None,
@@ -334,6 +437,80 @@ def followup_analyze(title: str, description: str, questions: list, answers: lis
             "deadline_confidence": "medium",
             "suggested_breakdown": [],
             "reasoning": "AI refinement is temporarily unavailable, so default suggestions were used.",
+        }
+
+
+def plan_day(tasks: list, schedule: list, free_slots: list, settings: dict,
+             history: list = None, planning_mode: str = "initial",
+             target_date: str | None = None) -> dict:
+    history_block = _build_history_block(history or [])
+    tasks_json = json.dumps(tasks or [], default=str)
+    schedule_json = json.dumps(schedule or [], default=str)
+    free_slots_json = json.dumps(free_slots or [], default=str)
+    settings_json = json.dumps(settings or {}, default=str)
+    valid_task_ids = {int(item["id"]) for item in tasks or [] if item.get("id") is not None}
+    fallback_minutes = settings.get("default_focus_minutes", 50) if settings else 50
+
+    try:
+        prompt = DAY_PLAN_PROMPT.format(
+            target_date=target_date or local_today_str(),
+            current_time=local_now().strftime("%Y-%m-%d %H:%M"),
+            planning_mode=planning_mode,
+            settings_json=settings_json,
+            tasks_json=tasks_json,
+            schedule_json=schedule_json,
+            free_slots_json=free_slots_json,
+            history=history_block,
+        )
+        response = _get_client().chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": "Plan this day realistically."},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.5,
+            max_tokens=700,
+        )
+        result = json.loads(response.choices[0].message.content)
+        recommendations = []
+        seen = set()
+        for item in result.get("recommendations", []):
+            try:
+                task_id = int(item.get("task_id"))
+            except (TypeError, ValueError):
+                continue
+            if task_id not in valid_task_ids or task_id in seen:
+                continue
+            seen.add(task_id)
+            recommendations.append({
+                "task_id": task_id,
+                "start_time": _normalize_clock_string(item.get("start_time")),
+                "minutes": _normalize_minutes(item.get("minutes"), fallback_minutes),
+                "reason": str(item.get("reason", "")).strip()[:280],
+            })
+        if not recommendations:
+            raise ValueError("No valid day plan recommendations returned.")
+        return {
+            "summary": str(result.get("summary", "")).strip()[:280],
+            "reasoning": str(result.get("reasoning", "")).strip()[:800],
+            "recommendations": recommendations[:6],
+            "watchouts": _normalize_watchouts(result.get("watchouts")),
+        }
+    except Exception:
+        fallback_recommendations = []
+        for item in (tasks or [])[:4]:
+            fallback_recommendations.append({
+                "task_id": int(item["id"]),
+                "start_time": None,
+                "minutes": _normalize_minutes(item.get("suggested_minutes"), fallback_minutes),
+                "reason": "Selected from the top of your ready queue using priority, deadlines, and planned work.",
+            })
+        return {
+            "summary": "Focus on the most urgent ready tasks and leave space for the rest of the day.",
+            "reasoning": "AI day planning is temporarily unavailable, so the app used your current queue order and schedule constraints.",
+            "recommendations": fallback_recommendations,
+            "watchouts": ["Leave some unscheduled time so delays do not break the whole day."],
         }
 
 

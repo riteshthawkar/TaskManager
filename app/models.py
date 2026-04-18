@@ -96,6 +96,36 @@ class UserSettings(Base):
     reminder_final_hours: Mapped[int] = mapped_column(Integer, default=2)
 
 
+class DayPlan(Base):
+    __tablename__ = "day_plans"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    plan_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft, applied, superseded
+    planning_mode: Mapped[str] = mapped_column(String(20), default="initial")  # initial, replan
+    summary: Mapped[str] = mapped_column(Text, default="")
+    reasoning: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    applied_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+
+class DayPlanBlock(Base):
+    __tablename__ = "day_plan_blocks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    day_plan_id: Mapped[int] = mapped_column(Integer, ForeignKey("day_plans.id"), nullable=False, index=True)
+    task_id: Mapped[int] = mapped_column(Integer, ForeignKey("tasks.id"), nullable=True, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    detail: Mapped[str] = mapped_column(Text, default="")
+    block_type: Mapped[str] = mapped_column(String(20), default="focus")  # focus, buffer, admin
+    start_time: Mapped[str] = mapped_column(String(5), nullable=False)  # HH:MM
+    end_time: Mapped[str] = mapped_column(String(5), nullable=False)    # HH:MM
+    minutes: Mapped[int] = mapped_column(Integer, default=0)
+    priority_rank: Mapped[int] = mapped_column(Integer, default=0)
+    state: Mapped[str] = mapped_column(String(20), default="planned")  # planned, applied, skipped
+    event_id: Mapped[int] = mapped_column(Integer, ForeignKey("events.id"), nullable=True)
+
+
 class PushSubscription(Base):
     __tablename__ = "push_subscriptions"
 
@@ -137,4 +167,7 @@ class Event(Base):
     repeat: Mapped[str] = mapped_column(String(20), default="none")  # none, daily, weekdays, weekly
     repeat_until: Mapped[date] = mapped_column(Date, nullable=True)
     parent_event_id: Mapped[int] = mapped_column(Integer, nullable=True)  # links to original repeating event
+    planner_source: Mapped[str] = mapped_column(String(30), default="")
+    planner_plan_id: Mapped[int] = mapped_column(Integer, nullable=True)
+    planner_block_id: Mapped[int] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

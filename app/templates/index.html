@@ -420,6 +420,76 @@
 .plan-task-actions .btn {
     width: 100%;
 }
+.ai-plan-card {
+    border-color: rgba(99,255,175,0.18);
+}
+.ai-plan-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    background: rgba(99,255,175,0.10);
+    color: var(--cyan);
+    border: 1px solid rgba(99,255,175,0.14);
+}
+.ai-plan-copy {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 12px;
+}
+.ai-plan-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.ai-plan-block {
+    border: 1px solid rgba(149,255,69,0.08);
+    border-radius: var(--radius-sm);
+    background: rgba(255,255,255,0.02);
+    padding: 10px 12px;
+}
+.ai-plan-block-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+}
+.ai-plan-block-title {
+    font-size: 13px;
+    font-weight: 700;
+}
+.ai-plan-block-meta {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 4px;
+}
+.ai-plan-block-time {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent-bright);
+    white-space: nowrap;
+}
+.ai-plan-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+.ai-plan-actions form {
+    flex: 1 1 150px;
+}
+.ai-plan-actions .btn {
+    width: 100%;
+}
+.ai-plan-empty {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
 
 /* ── Tablet ───────────────── */
 @media (min-width: 720px) {
@@ -704,6 +774,81 @@
         </div>
 
         <div class="dashboard-side">
+            <div class="card ai-plan-card fade-in d3">
+                <div class="flex-between mb-md">
+                    <h2 style="margin-bottom:0;">AI Day Plan</h2>
+                    {% if current_day_plan %}
+                    <span class="ai-plan-status">{{ "Applied" if current_day_plan.status == "applied" else "Draft" }}</span>
+                    {% endif %}
+                </div>
+                {% if current_day_plan %}
+                <div class="ai-plan-copy">
+                    <strong>{{ current_day_plan.summary }}</strong>
+                    {% if current_day_plan.reasoning %}
+                    <div style="margin-top: 6px;">{{ current_day_plan.reasoning }}</div>
+                    {% endif %}
+                </div>
+                <div class="plan-metrics" style="margin-bottom: 12px;">
+                    <div class="plan-metric">
+                        <div class="plan-metric-value" style="color: var(--cyan);">{{ current_day_plan_blocks|length }}</div>
+                        <div class="plan-metric-label">Blocks</div>
+                    </div>
+                    <div class="plan-metric">
+                        <div class="plan-metric-value" style="color: var(--accent);">{{ current_day_plan_minutes }}</div>
+                        <div class="plan-metric-label">Minutes</div>
+                    </div>
+                    <div class="plan-metric">
+                        <div class="plan-metric-value" style="color: var(--green);">{{ current_day_plan_task_count }}</div>
+                        <div class="plan-metric-label">Tasks</div>
+                    </div>
+                </div>
+                <div class="ai-plan-list">
+                    {% for block in current_day_plan_blocks %}
+                    <div class="ai-plan-block">
+                        <div class="ai-plan-block-top">
+                            <div>
+                                <div class="ai-plan-block-title">{{ block.title }}</div>
+                                <div class="ai-plan-block-meta">{{ block.minutes }} minutes{% if block.detail %} &middot; {{ block.detail }}{% endif %}</div>
+                            </div>
+                            <div class="ai-plan-block-time">{{ block.start_time }} - {{ block.end_time }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="ai-plan-actions">
+                    {% if current_day_plan.status == 'draft' %}
+                    <form method="post" action="/day-plan/{{ current_day_plan.id }}/apply">
+                        {{ csrf_input(request) }}
+                        <input type="hidden" name="next_path" value="/">
+                        <button type="submit" class="btn btn-primary btn-sm">Apply to Schedule</button>
+                    </form>
+                    {% endif %}
+                    <form method="post" action="/day-plan/generate">
+                        {{ csrf_input(request) }}
+                        <input type="hidden" name="plan_date" value="{{ today.isoformat() }}">
+                        <input type="hidden" name="planning_mode" value="{{ 'replan' if current_day_plan else 'initial' }}">
+                        <input type="hidden" name="next_path" value="/">
+                        <button type="submit" class="btn btn-outline btn-sm">{{ 'Replan Day' if current_day_plan else 'Plan My Day' }}</button>
+                    </form>
+                    <a href="/schedule?selected_date={{ today.isoformat() }}" class="btn btn-outline btn-sm">Open Schedule</a>
+                </div>
+                {% else %}
+                <div class="ai-plan-empty">
+                    Generate a smart day plan from your open tasks, deadlines, classes, meetings, and workday hours. The AI now proposes exact work slots, and the app validates them before updating your schedule.
+                </div>
+                <div class="ai-plan-actions">
+                    <form method="post" action="/day-plan/generate">
+                        {{ csrf_input(request) }}
+                        <input type="hidden" name="plan_date" value="{{ today.isoformat() }}">
+                        <input type="hidden" name="planning_mode" value="initial">
+                        <input type="hidden" name="next_path" value="/">
+                        <button type="submit" class="btn btn-primary btn-sm">Plan My Day</button>
+                    </form>
+                    <a href="/schedule?selected_date={{ today.isoformat() }}" class="btn btn-outline btn-sm">Review Schedule</a>
+                </div>
+                {% endif %}
+            </div>
+
             <!-- Today Plan -->
             <div class="card today-plan fade-in d3">
                 <div class="flex-between mb-md">

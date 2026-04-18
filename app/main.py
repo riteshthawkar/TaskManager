@@ -25,13 +25,15 @@ from app.models import (
     Subtask,
     TaskNote,
     TaskActivity,
+    DayPlan,
+    DayPlanBlock,
     PushSubscription,
     UserStats,
     UserSettings,
     DeepWorkSession,
     Event,
 )
-from app.llm import analyze_task, followup_analyze, generate_motivation, suggest_deep_work
+from app.llm import analyze_task, followup_analyze, generate_motivation, suggest_deep_work, plan_day
 from app.notifications import (
     check_and_send_notifications,
     email_config_issues,
@@ -329,6 +331,9 @@ DEFAULT_REMINDER_DAY_HOURS = 24
 DEFAULT_REMINDER_FINAL_HOURS = 2
 FOCUS_EVENT_PREFIX = "Focus:"
 FOCUS_EVENT_MARKER = "[focus-task:"
+DAY_PLAN_EVENT_PREFIX = "Day Plan:"
+DAY_PLAN_EVENT_MARKER = "[day-plan:"
+DAY_PLAN_SOURCE = "day_plan"
 
 
 def get_stats(db: Session) -> UserStats:
@@ -936,6 +941,402 @@ def get_dw_session_history(db: Session, limit: int = 15) -> list:
     return result
 
 
+def is_day_plan_event(event: Event) -> bool:
+    return (event.planner_source or "") == DAY_PLAN_SOURCE
+
+
+def day_plan_marker(plan_id: int, block_id: int, task_id: int | None = None) -> str:
+    task_part = f":{task_id}" if task_id is not None else ""
+    return f"{DAY_PLAN_EVENT_MARKER}{plan_id}:{block_id}{task_part}]"
+
+
+def get_latest_day_plan(db: Session, target_date: date) -> DayPlan | None:
+    draft = db.query(DayPlan).filter(
+        DayPlan.plan_date == target_date,
+        DayPlan.status == "draft",
+    ).order_by(DayPlan.created_at.desc(), DayPlan.id.desc()).first()
+    if draft:
+        return draft
+    return db.query(DayPlan).filter(
+        DayPlan.plan_date == target_date,
+        DayPlan.status == "applied",
+    ).order_by(DayPlan.created_at.desc(), DayPlan.id.desc()).first()
+
+
+def get_day_plan_blocks(db: Session, plan_id: int) -> list[DayPlanBlock]:
+    return db.query(DayPlanBlock).filter(
+        DayPlanBlock.day_plan_id == plan_id
+    ).order_by(DayPlanBlock.start_time.asc(), DayPlanBlock.id.asc()).all()
+
+
+def get_day_plan_events(db: Session, target_date: date) -> list[Event]:
+    return db.query(Event).filter(
+        Event.event_date == target_date,
+        Event.planner_source == DAY_PLAN_SOURCE,
+    ).order_by(Event.start_time.asc(), Event.id.asc()).all()
+
+
+def get_schedule_events(db: Session, target_date: date, include_day_plan: bool = True) -> list[Event]:
+    query = db.query(Event).filter(Event.event_date == target_date)
+    if not include_day_plan:
+        query = query.filter((Event.planner_source == "") | (Event.planner_source.is_(None)))
+    return query.order_by(Event.start_time.asc(), Event.id.asc()).all()
+
+
+def build_available_slots_for_date(
+    db: Session,
+    target_date: date,
+    settings: UserSettings | None = None,
+    include_day_plan_events: bool = False,
+) -> list[dict]:
+    today = local_today()
+    if target_date < today:
+        return []
+
+    workday_start, workday_end = get_workday_bounds(settings)
+    start_boundary = workday_start
+    if target_date == today:
+        start_boundary = max(workday_start, round_up_to_quarter(local_now().time(), latest=workday_end))
+
+    cursor = time_to_minutes(start_boundary)
+    end_of_day = time_to_minutes(workday_end)
+    if cursor >= end_of_day:
+        return []
+
+    slots: list[dict] = []
+    events = get_schedule_events(db, target_date, include_day_plan=include_day_plan_events)
+    for event in events:
+        existing_start = time_to_minutes(event.start_time)
+        existing_end = time_to_minutes(event.end_time)
+        if existing_end <= cursor:
+            continue
+        if existing_start > cursor and existing_start - cursor >= 25:
+            slots.append({
+                "date": target_date,
+                "start_time": minutes_to_time(cursor),
+                "end_time": minutes_to_time(existing_start),
+                "duration_minutes": existing_start - cursor,
+            })
+        cursor = max(cursor, existing_end)
+        if cursor >= end_of_day:
+            break
+
+    if end_of_day - cursor >= 25:
+        slots.append({
+            "date": target_date,
+            "start_time": minutes_to_time(cursor),
+            "end_time": minutes_to_time(end_of_day),
+            "duration_minutes": end_of_day - cursor,
+        })
+    return slots
+
+
+def serialize_schedule_for_day_plan(events: list[Event]) -> list[dict]:
+    return [
+        {
+            "title": event.title,
+            "category": event.category,
+            "start_time": event.start_time,
+            "end_time": event.end_time,
+            "planner_source": event.planner_source or "",
+        }
+        for event in events
+    ]
+
+
+def serialize_slots_for_day_plan(slots: list[dict]) -> list[dict]:
+    return [
+        {
+            "start_time": slot["start_time"].strftime("%H:%M"),
+            "end_time": slot["end_time"].strftime("%H:%M"),
+            "duration_minutes": slot["duration_minutes"],
+        }
+        for slot in slots
+    ]
+
+
+def get_day_plan_candidates(db: Session, target_date: date, settings: UserSettings | None = None) -> list[Task]:
+    now = utc_now_naive()
+    queue_tasks = db.query(Task).filter(Task.status.in_(tuple(TASK_QUEUE_STATUSES))).all()
+    ready_tasks = [task for task in queue_tasks if task_is_ready(task, target_date)]
+    sorted_tasks = sorted(ready_tasks, key=lambda task: task_sort_key(task, target_date, now))
+    limit = max(4, min(8, (settings.daily_top_task_target if settings else DEFAULT_DAILY_TOP_TARGET) + 3))
+
+    selected: list[Task] = []
+    seen: set[int] = set()
+
+    def include(task: Task) -> None:
+        if task.id in seen:
+            return
+        seen.add(task.id)
+        selected.append(task)
+
+    for task in sorted_tasks:
+        target = task_target_date(task)
+        if task.planned_for_date == target_date:
+            include(task)
+            continue
+        if target and target <= target_date + timedelta(days=1):
+            include(task)
+
+    for task in sorted_tasks:
+        if len(selected) >= limit:
+            break
+        include(task)
+
+    return selected[:limit]
+
+
+def serialize_tasks_for_day_plan(db: Session, tasks: list[Task], settings: UserSettings | None = None) -> list[dict]:
+    projects = project_lookup(get_projects(db))
+    subtask_summary = get_subtask_summary(db, [task.id for task in tasks])
+    serialized = []
+    for task in tasks:
+        subtasks = subtask_summary.get(task.id, {"completed": 0, "total": 0})
+        serialized.append({
+            "id": task.id,
+            "title": task.title,
+            "description": task.description or "",
+            "priority": task.priority,
+            "status": task.status,
+            "project": projects.get(task.project_id).name if task.project_id in projects else None,
+            "tags": parse_tags_text(task.tags_text),
+            "planned_for_date": task.planned_for_date.isoformat() if task.planned_for_date else None,
+            "start_on": task.start_on.isoformat() if task.start_on else None,
+            "deadline": utc_naive_to_local(task.deadline).strftime("%Y-%m-%d %H:%M") if task.deadline else None,
+            "estimated_completion": utc_naive_to_local(task.estimated_completion).strftime("%Y-%m-%d %H:%M") if task.estimated_completion else None,
+            "deadline_confidence": task.deadline_confidence,
+            "subtasks_completed": subtasks.get("completed", 0),
+            "subtasks_total": subtasks.get("total", 0),
+            "suggested_minutes": focus_duration_for_task(task, settings=settings),
+            "existing_focus_blocks": count_scheduled_focus_blocks(db, task.id),
+        })
+    return serialized
+
+
+def allocate_day_plan_blocks(
+    recommendations: list[dict],
+    tasks_by_id: dict[int, Task],
+    slots: list[dict],
+    settings: UserSettings | None = None,
+) -> tuple[list[dict], list[dict]]:
+    if not recommendations or not slots:
+        return [], recommendations
+
+    default_chunk = max(25, min((settings.default_focus_minutes if settings else DEFAULT_FOCUS_MINUTES), 120))
+    mutable_slots: list[dict] = [
+        {
+            "start_minute": time_to_minutes(slot["start_time"]),
+            "end_minute": time_to_minutes(slot["end_time"]),
+        }
+        for slot in slots
+    ]
+    blocks: list[dict] = []
+    unscheduled: list[dict] = []
+
+    def reserve_specific_start(desired_start_minute: int, minutes_requested: int) -> dict | None:
+        for index, slot in enumerate(mutable_slots):
+            slot_start = slot["start_minute"]
+            slot_end = slot["end_minute"]
+            if not (slot_start <= desired_start_minute < slot_end):
+                continue
+
+            available = slot_end - desired_start_minute
+            if available < 25:
+                return None
+
+            block_minutes = min(minutes_requested, available)
+            block_minutes = max(25, block_minutes)
+            if minutes_requested > block_minutes and minutes_requested - block_minutes < 25 and available >= minutes_requested:
+                block_minutes = minutes_requested
+
+            new_slots = []
+            if desired_start_minute - slot_start >= 25:
+                new_slots.append({"start_minute": slot_start, "end_minute": desired_start_minute})
+            if slot_end - (desired_start_minute + block_minutes) >= 25:
+                new_slots.append({"start_minute": desired_start_minute + block_minutes, "end_minute": slot_end})
+            mutable_slots[index:index + 1] = new_slots
+            return {
+                "start_minute": desired_start_minute,
+                "end_minute": desired_start_minute + block_minutes,
+                "minutes": block_minutes,
+                "slot_type": "llm_exact",
+            }
+        return None
+
+    def reserve_first_fit(minutes_requested: int) -> dict | None:
+        for index, slot in enumerate(mutable_slots):
+            available = slot["end_minute"] - slot["start_minute"]
+            if available < 25:
+                continue
+
+            block_minutes = min(minutes_requested, min(default_chunk, available))
+            block_minutes = max(25, block_minutes)
+            if minutes_requested > block_minutes and minutes_requested - block_minutes < 25 and available >= minutes_requested:
+                block_minutes = minutes_requested
+
+            start_minute = slot["start_minute"]
+            end_minute = start_minute + block_minutes
+            if slot["end_minute"] - end_minute >= 25:
+                mutable_slots[index] = {"start_minute": end_minute, "end_minute": slot["end_minute"]}
+            else:
+                mutable_slots.pop(index)
+            return {
+                "start_minute": start_minute,
+                "end_minute": end_minute,
+                "minutes": block_minutes,
+                "slot_type": "fallback",
+            }
+        return None
+
+    for rank, recommendation in enumerate(recommendations, start=1):
+        task = tasks_by_id.get(recommendation["task_id"])
+        if not task:
+            continue
+        remaining = max(25, int(recommendation["minutes"]))
+        created_any = False
+        preferred_start = parse_clock(recommendation["start_time"]) if recommendation.get("start_time") else None
+        if preferred_start is not None:
+            reserved = reserve_specific_start(time_to_minutes(preferred_start), remaining)
+            if reserved:
+                blocks.append({
+                    "task_id": task.id,
+                    "title": task.title,
+                    "detail": recommendation.get("reason", ""),
+                    "start_time": minutes_to_time(reserved["start_minute"]),
+                    "end_time": minutes_to_time(reserved["end_minute"]),
+                    "minutes": reserved["minutes"],
+                    "priority_rank": rank,
+                    "block_type": "focus",
+                })
+                created_any = True
+                remaining -= reserved["minutes"]
+
+        while remaining >= 25:
+            reserved = reserve_first_fit(remaining)
+            if not reserved:
+                break
+            blocks.append({
+                "task_id": task.id,
+                "title": task.title,
+                "detail": recommendation.get("reason", ""),
+                "start_time": minutes_to_time(reserved["start_minute"]),
+                "end_time": minutes_to_time(reserved["end_minute"]),
+                "minutes": reserved["minutes"],
+                "priority_rank": rank,
+                "block_type": "focus",
+            })
+            created_any = True
+            remaining -= reserved["minutes"]
+
+        if not created_any or remaining >= 25:
+            unscheduled.append({
+                "task_id": task.id,
+                "title": task.title,
+                "minutes_left": remaining,
+                "reason": recommendation.get("reason", ""),
+                "requested_start_time": recommendation.get("start_time"),
+            })
+
+    return blocks, unscheduled
+
+
+def create_day_plan(
+    db: Session,
+    target_date: date,
+    settings: UserSettings | None = None,
+    planning_mode: str = "initial",
+) -> tuple[DayPlan | None, list[DayPlanBlock], str | None]:
+    settings = settings or get_settings(db)
+    tasks = get_day_plan_candidates(db, target_date, settings=settings)
+    if not tasks:
+        return None, [], "No ready tasks are available to plan for that day."
+
+    slots = build_available_slots_for_date(db, target_date, settings=settings, include_day_plan_events=False)
+    if not slots:
+        return None, [], "No open time is available inside your configured workday."
+
+    task_payload = serialize_tasks_for_day_plan(db, tasks, settings=settings)
+    schedule_payload = serialize_schedule_for_day_plan(get_schedule_events(db, target_date, include_day_plan=False))
+    slot_payload = serialize_slots_for_day_plan(slots)
+    settings_payload = {
+        "workday_start": settings.workday_start,
+        "workday_end": settings.workday_end,
+        "default_focus_minutes": settings.default_focus_minutes,
+        "daily_top_task_target": settings.daily_top_task_target,
+    }
+    llm_plan = plan_day(
+        tasks=task_payload,
+        schedule=schedule_payload,
+        free_slots=slot_payload,
+        settings=settings_payload,
+        history=get_task_history(db),
+        planning_mode=planning_mode,
+        target_date=target_date.isoformat(),
+    )
+
+    tasks_by_id = {task.id: task for task in tasks}
+    block_specs, unscheduled = allocate_day_plan_blocks(llm_plan.get("recommendations", []), tasks_by_id, slots, settings=settings)
+    if not block_specs:
+        return None, [], "The planner could not fit work into the available slots for that day."
+
+    db.query(DayPlan).filter(
+        DayPlan.plan_date == target_date,
+        DayPlan.status == "draft",
+    ).update({"status": "superseded"}, synchronize_session=False)
+
+    reasoning = llm_plan.get("reasoning", "")
+    watchouts = llm_plan.get("watchouts", [])
+    if watchouts:
+        reasoning = (reasoning + "\n\nWatchouts:\n- " + "\n- ".join(watchouts)).strip()
+    if unscheduled:
+        skipped_titles = ", ".join(item["title"] for item in unscheduled[:3])
+        reasoning = (reasoning + f"\n\nUnscheduled for now: {skipped_titles}.").strip()
+
+    day_plan = DayPlan(
+        plan_date=target_date,
+        status="draft",
+        planning_mode=planning_mode if planning_mode in {"initial", "replan"} else "initial",
+        summary=llm_plan.get("summary", "").strip() or "A balanced day plan was generated from your tasks and fixed events.",
+        reasoning=reasoning[:4000],
+    )
+    db.add(day_plan)
+    db.flush()
+
+    plan_blocks: list[DayPlanBlock] = []
+    for block in block_specs:
+        plan_block = DayPlanBlock(
+            day_plan_id=day_plan.id,
+            task_id=block["task_id"],
+            title=block["title"],
+            detail=block["detail"],
+            block_type=block["block_type"],
+            start_time=block["start_time"].strftime("%H:%M"),
+            end_time=block["end_time"].strftime("%H:%M"),
+            minutes=block["minutes"],
+            priority_rank=block["priority_rank"],
+        )
+        db.add(plan_block)
+        plan_blocks.append(plan_block)
+
+    db.commit()
+    for block in plan_blocks:
+        db.refresh(block)
+    db.refresh(day_plan)
+    return day_plan, plan_blocks, None
+
+
+def replaceable_day_plan_events(db: Session, target_date: date) -> list[Event]:
+    events = get_day_plan_events(db, target_date)
+    today = local_today()
+    if target_date > today:
+        return events
+    if target_date < today:
+        return []
+    now_clock = local_now().time()
+    return [event for event in events if parse_clock(event.end_time) > now_clock]
+
+
 def maybe_spawn_next_recurring_task(db: Session, task: Task) -> Task | None:
     if task.repeat == "none":
         return None
@@ -1130,6 +1531,11 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
     next_focus_slot = find_next_focus_slot(db, settings.default_focus_minutes, latest_date=today + timedelta(days=2), settings=settings)
     today_focus_blocks = sum(1 for event in today_events if event.title.startswith(FOCUS_EVENT_PREFIX))
     task_focus_counts = {task.id: count_scheduled_focus_blocks(db, task.id) for task in all_tasks}
+    current_day_plan = get_latest_day_plan(db, today)
+    current_day_plan_blocks = get_day_plan_blocks(db, current_day_plan.id) if current_day_plan else []
+    today_plan_events = get_day_plan_events(db, today)
+    current_day_plan_minutes = sum(block.minutes for block in current_day_plan_blocks)
+    current_day_plan_task_count = len({block.task_id for block in current_day_plan_blocks if block.task_id})
 
     return templates.TemplateResponse("index.html", template_context(
         request,
@@ -1164,6 +1570,11 @@ async def dashboard(request: Request, db: Session = Depends(get_db)):
         subtask_summary=subtask_summary,
         task_focus_counts=task_focus_counts,
         focus_duration_for_task=lambda task: focus_duration_for_task(task, settings=settings),
+        current_day_plan=current_day_plan,
+        current_day_plan_blocks=current_day_plan_blocks,
+        today_plan_events=today_plan_events,
+        current_day_plan_minutes=current_day_plan_minutes,
+        current_day_plan_task_count=current_day_plan_task_count,
     ))
 
 
@@ -1276,6 +1687,134 @@ async def update_settings(
     return RedirectResponse(url="/settings", status_code=303)
 
 
+@app.post("/day-plan/generate", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def generate_day_plan_route(
+    request: Request,
+    plan_date: str = Form(""),
+    planning_mode: str = Form("initial"),
+    next_path: str = Form("/"),
+    db: Session = Depends(get_db),
+):
+    target_date = local_date_from_input(plan_date) if plan_date else local_today()
+    redirect_url = next_path if next_path.startswith("/") else "/"
+    if target_date is None:
+        push_alert(request, "error", "Invalid planning date.")
+        return RedirectResponse(url=redirect_url, status_code=303)
+    if target_date < local_today():
+        push_alert(request, "error", "Day planning only works for today or future dates.")
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    day_plan, blocks, error = create_day_plan(
+        db,
+        target_date=target_date,
+        settings=get_settings(db),
+        planning_mode=planning_mode if planning_mode in {"initial", "replan"} else "initial",
+    )
+    if error or not day_plan:
+        push_alert(request, "error", error or "The planner could not generate a day plan.")
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    label = "replanned" if planning_mode == "replan" else "generated"
+    push_alert(
+        request,
+        "success",
+        f'{label.title()} a day plan for {target_date.strftime("%b %d")} with {len(blocks)} proposed block{"s" if len(blocks) != 1 else ""}.',
+    )
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
+@app.post("/day-plan/{plan_id}/apply", dependencies=[Depends(require_authenticated), Depends(validate_csrf)])
+async def apply_day_plan_route(
+    plan_id: int,
+    request: Request,
+    next_path: str = Form("/"),
+    db: Session = Depends(get_db),
+):
+    redirect_url = next_path if next_path.startswith("/") else "/"
+    day_plan = db.query(DayPlan).filter(DayPlan.id == plan_id).first()
+    if not day_plan or day_plan.status == "superseded":
+        push_alert(request, "error", "That day plan is no longer available.")
+        return RedirectResponse(url=redirect_url, status_code=303)
+    if day_plan.plan_date < local_today():
+        push_alert(request, "error", "Past day plans cannot be applied.")
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    blocks = get_day_plan_blocks(db, day_plan.id)
+    if not blocks:
+        push_alert(request, "error", "The selected day plan has no blocks to apply.")
+        return RedirectResponse(url=redirect_url, status_code=303)
+
+    for existing_event in replaceable_day_plan_events(db, day_plan.plan_date):
+        db.delete(existing_event)
+    db.flush()
+
+    db.query(DayPlan).filter(
+        DayPlan.plan_date == day_plan.plan_date,
+        DayPlan.id != day_plan.id,
+        DayPlan.status != "superseded",
+    ).update({"status": "superseded"}, synchronize_session=False)
+
+    applied_count = 0
+    skipped_count = 0
+    current_clock = local_now().time()
+
+    for block in blocks:
+        if day_plan.plan_date == local_today() and parse_clock(block.end_time) <= current_clock:
+            block.state = "skipped"
+            block.event_id = None
+            skipped_count += 1
+            continue
+
+        overlaps = find_event_overlaps(
+            db,
+            day_plan.plan_date,
+            parse_clock(block.start_time),
+            parse_clock(block.end_time),
+        )
+        if overlaps:
+            block.state = "skipped"
+            block.event_id = None
+            skipped_count += 1
+            continue
+
+        event = Event(
+            title=f"{DAY_PLAN_EVENT_PREFIX} {block.title}",
+            description=(block.detail or "").strip(),
+            event_date=day_plan.plan_date,
+            start_time=block.start_time,
+            end_time=block.end_time,
+            category="work",
+            planner_source=DAY_PLAN_SOURCE,
+            planner_plan_id=day_plan.id,
+            planner_block_id=block.id,
+        )
+        db.add(event)
+        db.flush()
+        block.event_id = event.id
+        block.state = "applied"
+        applied_count += 1
+        if block.task_id:
+            add_task_activity(
+                db,
+                block.task_id,
+                "day_plan",
+                f'Added to the AI day plan on {day_plan.plan_date.strftime("%b %d")} from {block.start_time} to {block.end_time}.',
+            )
+
+    day_plan.status = "applied"
+    day_plan.applied_at = utc_now_naive()
+    db.commit()
+
+    if applied_count:
+        message = f"Applied {applied_count} day-plan block{'s' if applied_count != 1 else ''} to your schedule."
+        if skipped_count:
+            message += f" {skipped_count} block{'s were' if skipped_count != 1 else ' was'} skipped because time was no longer available."
+        push_alert(request, "success", message)
+    else:
+        push_alert(request, "info", "No blocks could be applied because the available time has already changed.")
+    return RedirectResponse(url=redirect_url, status_code=303)
+
+
 @app.get("/export/data", dependencies=[Depends(require_authenticated)])
 async def export_data(db: Session = Depends(get_db)):
     payload = {
@@ -1367,9 +1906,42 @@ async def export_data(db: Session = Depends(get_db)):
                 "repeat": event.repeat,
                 "repeat_until": event.repeat_until.isoformat() if event.repeat_until else None,
                 "parent_event_id": event.parent_event_id,
+                "planner_source": event.planner_source,
+                "planner_plan_id": event.planner_plan_id,
+                "planner_block_id": event.planner_block_id,
                 "created_at": event.created_at.isoformat() if event.created_at else None,
             }
             for event in db.query(Event).order_by(Event.id.asc()).all()
+        ],
+        "day_plans": [
+            {
+                "id": plan.id,
+                "plan_date": plan.plan_date.isoformat(),
+                "status": plan.status,
+                "planning_mode": plan.planning_mode,
+                "summary": plan.summary,
+                "reasoning": plan.reasoning,
+                "created_at": plan.created_at.isoformat() if plan.created_at else None,
+                "applied_at": plan.applied_at.isoformat() if plan.applied_at else None,
+            }
+            for plan in db.query(DayPlan).order_by(DayPlan.id.asc()).all()
+        ],
+        "day_plan_blocks": [
+            {
+                "id": block.id,
+                "day_plan_id": block.day_plan_id,
+                "task_id": block.task_id,
+                "title": block.title,
+                "detail": block.detail,
+                "block_type": block.block_type,
+                "start_time": block.start_time,
+                "end_time": block.end_time,
+                "minutes": block.minutes,
+                "priority_rank": block.priority_rank,
+                "state": block.state,
+                "event_id": block.event_id,
+            }
+            for block in db.query(DayPlanBlock).order_by(DayPlanBlock.id.asc()).all()
         ],
         "deep_work_sessions": [
             {
@@ -2291,6 +2863,9 @@ async def schedule_page(
     selected_events = db.query(Event).filter(
         Event.event_date == selected_day
     ).order_by(Event.start_time.asc()).all()
+    selected_day_plan = get_latest_day_plan(db, selected_day)
+    selected_day_plan_blocks = get_day_plan_blocks(db, selected_day_plan.id) if selected_day_plan else []
+    selected_day_plan_minutes = sum(block.minutes for block in selected_day_plan_blocks)
     editing_event = None
     editing_scope = "single"
     editing_form_event = None
@@ -2334,6 +2909,9 @@ async def schedule_page(
         editing_form_event=editing_form_event,
         editing_scope=editing_scope,
         settings=settings,
+        selected_day_plan=selected_day_plan,
+        selected_day_plan_blocks=selected_day_plan_blocks,
+        selected_day_plan_minutes=selected_day_plan_minutes,
     ))
 
 

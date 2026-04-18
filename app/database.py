@@ -263,10 +263,36 @@ def ensure_schema_compatibility() -> list[str]:
                     "ALTER TABLE events ADD COLUMN parent_event_id INTEGER"
                 ))
                 applied_migrations.append("events.parent_event_id")
+                event_columns.add("parent_event_id")
+
+            if "planner_source" not in event_columns:
+                connection.execute(text(
+                    "ALTER TABLE events ADD COLUMN planner_source VARCHAR(30) NOT NULL DEFAULT ''"
+                ))
+                applied_migrations.append("events.planner_source")
+                event_columns.add("planner_source")
+
+            if "planner_plan_id" not in event_columns:
+                connection.execute(text(
+                    "ALTER TABLE events ADD COLUMN planner_plan_id INTEGER"
+                ))
+                applied_migrations.append("events.planner_plan_id")
+                event_columns.add("planner_plan_id")
+
+            if "planner_block_id" not in event_columns:
+                connection.execute(text(
+                    "ALTER TABLE events ADD COLUMN planner_block_id INTEGER"
+                ))
+                applied_migrations.append("events.planner_block_id")
+                event_columns.add("planner_block_id")
 
             if dialect == "postgresql" and "repeat" in event_columns:
                 connection.execute(text(
                     "UPDATE events SET repeat = 'none' WHERE repeat IS NULL"
+                ))
+            if "planner_source" in event_columns:
+                connection.execute(text(
+                    "UPDATE events SET planner_source = '' WHERE planner_source IS NULL"
                 ))
 
     return applied_migrations
